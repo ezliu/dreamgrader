@@ -1,0 +1,375 @@
+  <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+  <html>
+
+  <!-- ======================================================================= -->
+  <script src="http://www.google.com/jsapi" type="text/javascript"></script>
+  <script type="text/javascript">google.load("jquery", "1.3.2");</script>
+  <style type="text/css">
+    body {
+      font-family: "Crimson Text","HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif;
+      font-weight:300;
+      font-size:18px;
+      margin-left: auto;
+      margin-right: auto;
+      width: 100%;
+    }
+
+    pre {
+      background-color: #f6f8fa;
+      padding: 16px;
+    }
+
+    code {
+      font-family: "SFMono-Regular","Consolas","Liberation Mono","Menlo",monospace;
+      overflow: scroll;
+    }
+
+    h1 {
+      font-family: "Source Sans Pro";
+      font-weight:300;
+    }
+
+    div {
+      max-width: 95%;
+      margin:auto;
+      padding: 10px;
+    }
+
+    .table-like {
+      display: flex;
+      flex-wrap: wrap;
+      flex-flow: row wrap;
+      justify-content: center;
+    }
+
+		.table-like hr {
+			width: 100%;
+      flex-basis: 100%;
+      height: 0;
+      margin: 0;
+      border: 0;
+		}
+
+    .disclaimerbox {
+      background-color: #eee;
+      border: 1px solid #eeeeee;
+      border-radius: 10px ;
+      -moz-border-radius: 10px ;
+      -webkit-border-radius: 10px ;
+      padding: 20px;
+    }
+
+    video.header-vid {
+      height: 140px;
+      border: 1px solid black;
+      border-radius: 10px ;
+      -moz-border-radius: 10px ;
+      -webkit-border-radius: 10px ;
+    }
+
+    img {
+      padding: 0;
+      display: block;
+      margin: 0 auto;
+      max-height: 100%;
+      max-width: 100%;
+    }
+
+    iframe {
+      max-width: 100%;
+    }
+
+    img.header-img {
+      height: 140px;
+      border: 1px solid black;
+      border-radius: 10px ;
+      -moz-border-radius: 10px ;
+      -webkit-border-radius: 10px ;
+    }
+
+    img.rounded {
+      border: 1px solid #eeeeee;
+      border-radius: 10px ;
+      -moz-border-radius: 10px ;
+      -webkit-border-radius: 10px ;
+    }
+
+    a:link,a:visited
+    {
+      color: #1367a7;
+      text-decoration: none;
+    }
+    a:hover {
+      color: #208799;
+    }
+
+    td.dl-link {
+      height: 160px;
+      text-align: center;
+      font-size: 22px;
+    }
+
+    .layered-paper-big { /* modified from: http://css-tricks.com/snippets/css/layered-paper/ */
+      box-shadow:
+              0px 0px 1px 1px rgba(0,0,0,0.35), /* The top layer shadow */
+              5px 5px 0 0px #fff, /* The second layer */
+              5px 5px 1px 1px rgba(0,0,0,0.35), /* The second layer shadow */
+              10px 10px 0 0px #fff, /* The third layer */
+              10px 10px 1px 1px rgba(0,0,0,0.35), /* The third layer shadow */
+              15px 15px 0 0px #fff, /* The fourth layer */
+              15px 15px 1px 1px rgba(0,0,0,0.35), /* The fourth layer shadow */
+              20px 20px 0 0px #fff, /* The fifth layer */
+              20px 20px 1px 1px rgba(0,0,0,0.35), /* The fifth layer shadow */
+              25px 25px 0 0px #fff, /* The fifth layer */
+              25px 25px 1px 1px rgba(0,0,0,0.35); /* The fifth layer shadow */
+      margin-left: 10px;
+      margin-right: 45px;
+    }
+
+
+    .layered-paper { /* modified from: http://css-tricks.com/snippets/css/layered-paper/ */
+      box-shadow:
+              0px 0px 1px 1px rgba(0,0,0,0.35), /* The top layer shadow */
+              5px 5px 0 0px #fff, /* The second layer */
+              5px 5px 1px 1px rgba(0,0,0,0.35), /* The second layer shadow */
+              10px 10px 0 0px #fff, /* The third layer */
+              10px 10px 1px 1px rgba(0,0,0,0.35); /* The third layer shadow */
+      margin-top: 5px;
+      margin-left: 10px;
+      margin-right: 30px;
+      margin-bottom: 5px;
+    }
+
+    .vert-cent {
+      position: relative;
+        top: 50%;
+        transform: translateY(-50%);
+    }
+
+    hr
+    {
+      border: 0;
+      height: 1px;
+      max-width: 1100px;
+      background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));
+    }
+
+    #authors td {
+      padding-bottom:5px;
+      padding-top:30px;
+    }
+  </style>
+  <!-- ======================================================================= -->
+
+  <!-- Start : Google Analytics Code -->
+  <!-- <script async src="https://www.googletagmanager.com/gtag/js?id=UA-64069893-4"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'UA-64069893-4');
+  </script> -->
+  <!-- End : Google Analytics Code -->
+
+  <script type="text/javascript" src="resources/hidebib.js"></script>
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script type="text/javascript" id="MathJax-script" async
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+
+  <head>
+  <div max-width=100%>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <link rel="icon" href="favicon.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" sizes="57x57" href="//www-media.stanford.edu/assets/favicon/apple-touch-icon-57x57.png" />
+    <link rel="apple-touch-icon" sizes="60x60" href="//www-media.stanford.edu/assets/favicon/apple-touch-icon-60x60.png" />
+    <link rel="apple-touch-icon" sizes="72x72" href="//www-media.stanford.edu/assets/favicon/apple-touch-icon-72x72.png" />
+    <link rel="apple-touch-icon" sizes="76x76" href="//www-media.stanford.edu/assets/favicon/apple-touch-icon-76x76.png" />
+    <link rel="apple-touch-icon" sizes="114x114" href="//www-media.stanford.edu/assets/favicon/apple-touch-icon-114x114.png" />
+    <link rel="apple-touch-icon" sizes="120x120" href="//www-media.stanford.edu/assets/favicon/apple-touch-icon-120x120.png" />
+    <link rel="apple-touch-icon" sizes="144x144" href="//www-media.stanford.edu/assets/favicon/apple-touch-icon-144x144.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="//www-media.stanford.edu/assets/favicon/apple-touch-icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="//www-media.stanford.edu/assets/favicon/apple-touch-icon-180x180.png" />
+
+    <link rel="icon" type="image/png" href="//www-media.stanford.edu/assets/favicon/favicon-196x196.png" sizes="196x196" />
+    <link rel="icon" type="image/png" href="//www-media.stanford.edu/assets/favicon/favicon-192x192.png" sizes="192x192" />
+    <link rel="icon" type="image/png" href="//www-media.stanford.edu/assets/favicon/favicon-128.png" sizes="128x128" />
+    <link rel="icon" type="image/png" href="//www-media.stanford.edu/assets/favicon/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/png" href="//www-media.stanford.edu/assets/favicon/favicon-32x32.png" sizes="32x32" />
+    <link rel="icon" type="image/png" href="//www-media.stanford.edu/assets/favicon/favicon-16x16.png" sizes="16x16" />
+
+    <link rel="mask-icon" href="//www-media.stanford.edu/assets/favicon/safari-pinned-tab.svg" color="#ffffff">
+    <meta name="application-name" content="Stanford University"/>
+    <meta name="msapplication-TileColor" content="#FFFFFF" />
+    <meta name="msapplication-TileImage" content="//www-media.stanford.edu/assets/favicon/mstile-144x144.png" />
+    <meta name="msapplication-square70x70logo" content="//www-media.stanford.edu/assets/favicon/mstile-70x70.png" />
+    <meta name="msapplication-square150x150logo" content="//www-media.stanford.edu/assets/favicon/mstile-150x150.png" />
+    <meta name="msapplication-square310x310logo" content="//www-media.stanford.edu/assets/favicon/mstile-310x310.png" />
+    <title>Giving Feedback on Interactive Student Programs with Meta-Exploration</title>
+  <meta name="HandheldFriendly" content="True" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="canonical" href="https://ezliu.github.io/" />
+  <meta name="referrer" content="no-referrer-when-downgrade" />
+
+  <meta property="og:site_name" content="Exploration in Meta-Reinforcement Learning" />
+  <meta property="og:type" content="video.other" />
+  <meta property="og:title" content="Giving Feedback on Interactive Student Programs with Meta-Exploration" />
+  <meta property="og:description" content="Evan Z. Liu, Moritz Stephan, Allen Nie, Chris Piech, Emma Brunskill, Chelsea Finn. Giving Feedback on Interactive Student Programs with Meta-Exploration. 2022." />
+  <meta property="og:url" content="https://ezliu.github.io/dreamgrader" />
+
+  <meta property="article:publisher" content="https://ezliu.github.io/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Giving Feedback on Interactive Student Programs with Meta-Exploration" />
+  <meta name="twitter:description" content="Evan Z. Liu, Moritz Stephan, Allen Nie, Chris Piech, Emma Brunskill, Chelsea Finn. Giving Feedback on Interactive Student Programs with Meta-Exploration. 2022." />
+  <meta name="twitter:url" content="https://ezliu.github.io/dreamgrader" />
+  <meta property="og:image:width" content="1600" />
+  <meta property="og:image:height" content="900" />
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <meta name="twitter:player" content="https://www.youtube.com/embed/EiIC0Rkz8-s" />
+  <meta name="twitter:player:width" content="640" />
+  <meta name="twitter:player:height" content="360" />
+</head>
+
+<body>
+
+      <br>
+      <center><span style="font-size:44px;font-weight:bold;font-family:Source Sans Pro;">Giving Feedback on Interactive Student Programs<br/>
+            with Meta-Exploration</span></center><br/>
+      <div class="table-like" style="justify-content:space-evenly;max-width:900px;margin:auto;">
+          <div><center><span style="font-size:25px"><a href="https://cs.stanford.edu/~evanliu" target="_blank">Evan Z. Liu*</a></span></center>
+          <center><span style="font-size:25px">Stanford</span></center>
+          </div>
+
+          <div><center><span style="font-size:25px"><a href="https://www.linkedin.com/in/moritz-stephan/" target="_blank">Moritz Stephan*</a></span></center>
+          <center><span style="font-size:25px">Stanford</span></center>
+          </div>
+
+          <div><center><span style="font-size:25px"><a href="https://anie.me/about" target="_blank">Allen Nie</a></span></center>
+          <center><span style="font-size:25px">Stanford</span></center>
+          </div>
+
+          <div><center><span style="font-size:25px"><a href="https://stanford.edu/~cpiech/bio/index.html" target="_blank">Chris Piech</a></span></center>
+          <center><span style="font-size:25px">Stanford</span></center>
+          </div>
+
+          <hr>
+
+          <div><center><span style="font-size:25px"><a href="https://cs.stanford.edu/people/ebrun/" target="_blank">Emma Brunskill</a></span></center>
+          <center><span style="font-size:25px">Stanford</span></center>
+          </div>
+
+          <div><center><span style="font-size:25px"><a href="https://ai.stanford.edu/~cbfinn/" target="_blank">Chelsea Finn</a></span></center>
+          <center><span style="font-size:25px">Stanford</span></center>
+          </div>
+
+          <hr>
+
+          <center><span style="font-size:25px" class="line-break">Neural Information Processing Systems (NeurIPS), 2022</span></center>
+      </div>
+
+      <div class="table-like" style="justify-content:space-evenly;max-width:700px;margin:auto;padding:5px">
+        <div><center><span style="font-size:28px"><a href="">[Paper (coming soon!)]</a></span></center></div>
+        <div><center><span style="font-size:28px"><a href='https://github.com/ezliu/dreamgrader'>[Code (coming soon!)]</a></span></center> </div>
+      </div>
+
+      <div style="width: 800px">
+        <div id="embed"></div>
+        <script src="https://slideslive.com/embed_presentation.js"></script>
+        <script>
+          embed = new SlidesLiveEmbed('embed', {
+            presentationId: '38985890',
+            autoPlay: false,
+            verticalEnabled: true
+          });
+        </script>
+      </div>
+
+      <div style="width:800px; margin:0 auto" align="justify">
+        <p><b>Abstract.</b> Developing interactive software, such as websites
+        or games, is a particularly engaging way to learn computer science.
+        However, teaching and giving feedback on such software is
+        time-consuming — standard approaches require instructors to manually
+        grade student-implemented interactive programs. As a result, online
+        platforms that serve millions, like Code.org, are unable to provide any
+        feedback on assignments for implementing interactive programs, which
+        critically hinders students’ ability to learn. One approach toward
+        automatic grading is to learn an agent that interacts with a student’s
+        program and explores states indicative of errors via reinforcement
+        learning. However, existing work on this approach only provides binary
+        feedback of whether a program is correct or not, while students require
+        finer-grained feedback on the specific errors in their programs to
+        understand their mistakes. In this work, we show that exploring to
+        discover errors can be cast as a meta-exploration problem. This enables
+        us to construct a principled objective for discovering errors and an
+        algorithm for optimizing this objective, which provides fine-grained
+        feedback. We evaluate our approach on a set of over 700K real
+        anonymized student programs from a Code.org interactive assignment. Our
+        approach provides feedback with 94.3% accuracy, improving over existing
+        approaches by 17.7% and coming within 1.5% of human-level accuracy.
+        </p>
+      </div>
+
+      <div style="width:800px; margin:0 auto; text-align=left", align="left">
+        <hr>
+
+        <center id="videos"><h1>Visualizations of DreamGrader</h1></center>
+
+          <center><h2>Bounce</h2></center>
+          <div class="table-like" style="justify-content:space-evenly;max-width:1100px;margin:auto;padding:0px">
+            <div>
+              <a href="resources/goal.gif"><img src="resources/goal.gif" width="245px" style="padding:0px"></img></a>
+              <center><p align="center">Scoring a goal.</p></center>
+            </div>
+
+            <div>
+              <a href="resources/wall.gif"><img src="resources/wall.gif" width="245px" style="padding:0px"></img></a>
+              <center><p align="center">Hitting the wall.</p></center>
+            </div>
+
+            <div>
+              <a href="resources/floor.gif"><img src="resources/floor.gif" width="245px" style="padding:0px"></img></a>
+              <center><p align="center">Deliberately missing the ball.</p></center>
+            </div>
+          </div>
+
+          <p>
+            We visualize some of the exploration behaviors that DreamGrader
+            learns on Bounce above.  Specifically, DreamGrader learns to test
+            what happens when it hits the ball into the goal, when it hits the
+            ball into the wall, and when it deliberately misses the ball. The
+            center example also shows a case where there are multiple balls on
+            the screen at the same time, which can make it challenging to find
+            other errors.
+          </p>
+
+          <center><h2>Breakout</h2></center>
+          <a href="resources/skewer_paddle.gif"><img src="resources/skewer_paddle.gif" style="border:3px solid #000000" width="350px"></img></a>
+
+          <p>
+            Above shows the the exploration DreamGrader learns for the commmon
+            "skewer paddle" error type in Breakout. DreamGrader learns to
+            deliberately hit the ball from the side, which causes the ball to
+            become skewered on the paddle, exposing that the student program
+            indeed has this error.
+          </p>
+
+        <hr>
+        <center id="acknowledgements"><h1>Acknowledgements</h1></center>
+          <p>
+            This website is adapted from
+            <a href="https://ezliu.github.io/dream/">this website</a>, which was
+            in turn adapted from
+            <a href="https://orybkin.github.io/video-gcp/">these</a>
+            <a href="https://pathak22.github.io/modular-assemblies/">websites</a>.
+            Feel free to use this website as a template for your own projects by referencing this!
+          </p>
+
+          <p><b>Website under construction.<b></p>
+    </div>
+</body>
+</html>
