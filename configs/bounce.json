@@ -1,0 +1,23 @@
+{
+  "environment": {
+    "type": "bounce-binary",
+    "img_state": false,
+    "max_score": 30,
+    "max_steps": 100,
+    "skip_frames": 2
+  },
+  "instruction_agent": {
+    "type": "learned",
+    "policy": {
+      "embedder": {
+        "trajectory_embedder": {
+          "penalty": 0
+        },
+        "transition_embedder": {
+           "reward_embed_dim": 32
+        }
+      }
+    },
+    "update_freq": 4
+  }
+}

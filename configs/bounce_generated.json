@@ -1,0 +1,22 @@
+{
+  "environment": {
+    "binary_index": 1,
+    "error_labels": [
+      "whenMiss-noBallLaunch",
+      "whenGoal-noBallLaunch",
+      "whenRun-noBallLaunch",
+      "whenMiss-noOpponentScore",
+      "whenWall-illegal-launchBall",
+      "whenGoal-illegal-incrementOpponentScore",
+      "whenGoal-noPlayerScore",
+      "whenMiss-illegal-incrementPlayerScore",
+      "whenMove-error",
+      "whenPaddle-illegal-incrementPlayerScore",
+      "whenWall-illegal-incrementPlayerScore",
+      "whenWall-illegal-incrementOpponentScore",
+      "whenGoal-illegal-bounceBall",
+      "whenWall-illegal-moveLeft",
+      "whenWall-illegal-moveRight"
+    ]
+  }
+}
