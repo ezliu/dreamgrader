@@ -6,7 +6,7 @@ Providing near-human level accuracy on grading interactive student programs with
 [Evan Zheran Liu\*](https://cs.stanford.edu/~evanliu/), [Moritz Stephan\*](https://www.linkedin.com/in/moritz-stephan/), [Allen Nie](https://anie.me/about), [Chris Piech](https://stanford.edu/~cpiech/bio/index.html), [Emma Brunskill](https://cs.stanford.edu/people/ebrun/), [Chelsea Finn](https://ai.stanford.edu/~cbfinn/)\
 Advances in Neural Information Processing Systems (NeurIPS), 2022. **Selected as an Oral**.
 
-Also see our [project web page](https://ezliu.github.io/dreamgrader/) and [paper]().
+Also see our [project web page](https://ezliu.github.io/dreamgrader/) and [paper](https://arxiv.org/abs/2211.08802).
 
 ## Requirements
 
