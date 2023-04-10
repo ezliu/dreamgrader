@@ -1,7 +1,7 @@
 import abc
 import collections
 
-import gym
+import gymnasium as gym
 import torch
 import numpy as np
 
@@ -236,7 +236,7 @@ class InstructionWrapper(abc.ABC, gym.Wrapper):
         first_episode_no_instruction flag is set."""
         return np.array(self.observation_space["instructions"].low)
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
         self._num_episodes += 1
         state = super().reset()
 
@@ -246,7 +246,6 @@ class InstructionWrapper(abc.ABC, gym.Wrapper):
             if not (self._num_episodes > 1 and self._fixed_instructions):
                 self._current_instructions = self._generate_instructions(
                         test=self._test)
-
         return InstructionState(
                 state.observation, self._current_instructions, None, 0, False,
                 self._trajectory, state.env_id)

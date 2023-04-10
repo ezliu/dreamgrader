@@ -7,7 +7,7 @@ import itertools
 import collections
 os.environ["SDL_VIDEODRIVER"] = "dummy"
 
-import gym
+import gymnasium as gym
 import numpy as np
 from PIL import Image
 from gym import spaces

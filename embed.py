@@ -1,13 +1,18 @@
 import abc
+import math
 import collections
 import numpy as np
 import torch
-from torch import nn
+from torch import nn, Tensor
 from torch import distributions as td
 from torch.nn import functional as F
+from torchtext.data.utils import get_tokenizer
+from torchtext.vocab import build_vocab_from_iterator
 
 from envs import bounce
 from envs import grid
+from envs import miniwob
+from envs.miniwob.constants import QUESTIONS, PEOPLE_NAMES, LOREM_WORDS
 import relabel
 import utils
 
@@ -62,7 +67,8 @@ def get_state_embedder(env):
         return BounceImageEmbedder
     elif isinstance(env.unwrapped, bounce.BounceMetaEnv):
         return BounceEmbedder
-
+    elif isinstance(env.unwrapped, miniwob.inbox.InboxMetaEnv):
+        return MiniWobEmbedder
     # Dependencies on OpenGL, so only load if absolutely necessary
     from envs.miniworld import sign
     if isinstance(env, sign.MiniWorldSign):
@@ -840,7 +846,7 @@ class BounceEmbedder(Embedder):
 
 
 class BounceImageEmbedder(Embedder):
-    """Embeds 84x84x4 bounce images."""
+    """Embeds 84x84x1 bounce images."""
     def __init__(self, observation_space, embed_dim):
         super().__init__(embed_dim)
 
@@ -863,6 +869,203 @@ class BounceImageEmbedder(Embedder):
         # This is hacking in the channel dim
         tensor = tensor.permute(0, 3, 2, 1)
         return self._network(tensor)
+
+
+class MiniWobScreenshotEmbedder(Embedder):
+    "Embeds screenshots using architecture from https://proceedings.mlr.press/v162/humphreys22a/humphreys22a.pdf"
+
+    def __init__(self, observation_space, embed_dim=512):
+        super().__init__(embed_dim)
+
+        self._network = nn.Sequential(
+                Residual(1, 32, use_1x1conv=True, strides=2),
+                Residual(32, 128, use_1x1conv=True, strides=2),
+                Residual(128, 256, use_1x1conv=True, strides=2),
+                Residual(256, embed_dim, use_1x1conv=True, strides=2)
+        )
+
+    def forward(self, obs):
+        # (batch_size, 80, 60, 3)
+        tensor = obs / 255.
+        # This is hacking in the channel dim
+        tensor = tensor.permute(0, 3, 2, 1)
+        result = self._network(tensor)
+        return result.reshape(result.shape[0], self._embed_dim, -1).permute(0, 2, 1)
+
+
+class Residual(nn.Module):  #@save
+    """The Residual block of ResNet models. From https://d2l.ai/chapter_convolutional-modern/resnet.html"""
+    def __init__(self, num_in, num_out, use_1x1conv=False, strides=1):
+        super().__init__()
+        self.conv1 = nn.Conv2d(num_in, num_out, kernel_size=3, padding=1,
+                                   stride=strides)
+        nn.init.kaiming_normal_(self.conv1.weight, nonlinearity='relu')
+        self.conv2 = nn.Conv2d(num_out, num_out, kernel_size=3, padding=1)
+        nn.init.kaiming_normal_(self.conv2.weight, nonlinearity='relu')
+        if use_1x1conv:
+            self.conv3 = nn.Conv2d(num_in, num_out, kernel_size=1,
+                                       stride=strides)
+            nn.init.kaiming_normal_(self.conv3.weight, nonlinearity='relu')
+        else:
+            self.conv3 = None
+        self.bn1 = nn.LazyBatchNorm2d()
+        self.bn2 = nn.LazyBatchNorm2d()
+
+    def forward(self, X):
+        Y = F.relu(self.bn1(self.conv1(X)))
+        Y = self.bn2(self.conv2(Y))
+        if self.conv3:
+            X = self.conv3(X)
+        Y += X
+        return F.relu(Y)
+
+
+class MiniWobQuestionEmbedder(Embedder):
+    d_hid = 256  # dimension of the feedforward network model in nn.TransformerEncoder
+    nlayers = 1  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
+    nhead = 4  # number of heads in nn.MultiheadAttention
+    dropout = 0.2  # dropout probability
+    transf_embed_dim = 128
+    
+    def __init__(self, observation_space, embed_dim=512):
+        super().__init__(embed_dim)
+
+        self.tokenizer = get_tokenizer('basic_english')
+        phrases = QUESTIONS + [" ".join(LOREM_WORDS), " ".join(PEOPLE_NAMES), "."]
+        self.vocab = build_vocab_from_iterator(map(self.tokenizer, phrases), specials=["<unk>", "<pad>", "<bos>"])
+        self.vocab.set_default_index(self.vocab["<unk>"])
+        self.model = TransformerEmbedder(len(self.vocab),self.transf_embed_dim, self.nhead, self.d_hid, self.nlayers, self.dropout)
+        self.output_proj = nn.Linear(self.transf_embed_dim, embed_dim)
+
+    def forward(self, obs):
+        """Expects shape (batch_size, 1)"""
+        obs = [torch.tensor([self.vocab["<bos>"]] + self.vocab(self.tokenizer(item)), dtype=torch.long) for item in obs]
+        # Pad to max length
+        obs = nn.utils.rnn.pad_sequence(obs, batch_first=True, padding_value=self.vocab["<pad>"])
+        # Generate padding mask
+        src_pad_mask = (obs == self.vocab["<pad>"])
+        obs = obs.permute(1, 0)
+        src_mask = self.model.generate_square_subsequent_mask(len(obs))
+        embeddings = self.model(obs, src_mask, src_pad_mask)
+
+        # Mean pool while taking into account mask
+        attn_mask = ~src_pad_mask.bool()
+        num_tokens = attn_mask.sum(axis=-1).unsqueeze(-1)
+        sum = (embeddings.permute(1, 0, 2) * attn_mask.unsqueeze(-1)).sum(axis=1)
+        pooled_embedding = sum / num_tokens
+        return F.relu(self.output_proj(pooled_embedding))
+
+
+class TransformerEmbedder(nn.Module):
+    """Adapted from https://pytorch.org/tutorials/beginner/transformer_tutorial.html"""
+    def __init__(self, ntoken: int, d_model: int, nhead: int, d_hid: int,
+                 nlayers: int, dropout: float = 0.5):
+        super().__init__()
+        self.model_type = 'Transformer'
+        self.pos_encoder = PositionalEncoding(d_model, dropout)
+        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, d_hid, dropout)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, nlayers)
+        self.encoder = nn.Embedding(ntoken, d_model)
+        self.d_model = d_model
+
+        self.init_weights()
+
+    def init_weights(self) -> None:
+        initrange = 0.1
+        self.encoder.weight.data.uniform_(-initrange, initrange)
+
+    def forward(self, src: Tensor, src_mask: Tensor, src_pad_mask: Tensor = None) -> Tensor:
+        """
+        Args:
+            src: Tensor, shape [seq_len, batch_size]
+            src_mask: Tensor, shape [seq_len, seq_len]
+
+        Returns:
+            output Tensor of shape [seq_len, batch_size, ntoken]
+        """
+        src = self.encoder(src) * math.sqrt(self.d_model)
+        src = self.pos_encoder(src)
+        output = self.transformer_encoder(src, mask=src_mask, src_key_padding_mask=src_pad_mask)
+        return output
+
+    @staticmethod
+    def generate_square_subsequent_mask(sz: int) -> Tensor:
+        """Generates an upper-triangular matrix of -inf, with zeros on diag."""
+        return torch.triu(torch.ones(sz, sz) * float('-inf'), diagonal=1)
+
+
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Args:
+            x: Tensor, shape [seq_len, batch_size, embedding_dim]
+        """
+        x = x + self.pe[:x.size(0)]
+        return self.dropout(x)
+
+
+class MiniWobEmbedder(Embedder):
+    nlayers = 8  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
+    nhead = 8  # number of heads in nn.MultiheadAttention
+    dropout = 0.2  # dropout probability
+    
+    def __init__(self, observation_space, embed_dim=512):
+        super().__init__(embed_dim)
+
+        self.question_embedder = MiniWobQuestionEmbedder(None, embed_dim=embed_dim)
+        self.screenshot_embedder = MiniWobScreenshotEmbedder(None, embed_dim=embed_dim)
+        self.extra_embedder = nn.Embedding(2, embed_dim)
+        encoder_layers = nn.TransformerEncoderLayer(embed_dim, self.nhead, embed_dim, self.dropout)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, self.nlayers)
+        self.linear = nn.Linear(3 * embed_dim, embed_dim)
+
+    def forward(self, obs):
+        if isinstance(obs, list):
+            question = [o.question for o in obs]
+            screenshot = torch.stack([o.screenshot for o in obs])
+        else:
+            question = [obs.question]
+            screenshot = obs.screenshot.unsqueeze(0)
+        
+        # Check batch size
+        assert len(question) == screenshot.shape[0], "Batch size mismatch"
+        B = len(question)
+
+        question_embedding = self.question_embedder(question).unsqueeze(1)
+        screenshot_embedding = self.screenshot_embedder(screenshot)
+        extra_emb1 = self.extra_embedder(torch.tensor([[0]]))
+        extra_emb2 = self.extra_embedder(torch.tensor([[1]]))
+        extra_emb1 = torch.repeat_interleave(extra_emb1, B, dim=0)
+        extra_emb2 = torch.repeat_interleave(extra_emb2, B, dim=0)
+        multi_embedding = torch.cat([
+            question_embedding,
+            screenshot_embedding,
+            extra_emb1,
+            extra_emb2
+        ], dim=1)
+        multi_embedding = multi_embedding.permute(1, 0, 2)
+        multi_embedding = self.transformer_encoder(multi_embedding)
+        multi_embedding = multi_embedding.permute(1, 0, 2)
+        res = torch.concat([
+            multi_embedding[:,:-2,:].mean(dim=1),
+            multi_embedding[:,-2,:],
+            multi_embedding[:,-1,:]
+        ], dim=1).reshape(B, -1)
+        res = F.relu(self.linear(res))
+        return res
+
 
 
 class SimpleGridStateEmbedder(Embedder):

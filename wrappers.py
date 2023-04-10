@@ -1,7 +1,7 @@
 import collections
 import cv2
 cv2.ocl.setUseOpenCL(False)
-import gym
+import gymnasium as gym
 from gym import spaces
 import numpy as np
 import torch

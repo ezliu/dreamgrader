@@ -14,10 +14,13 @@ from envs import grid
 from envs import cooking
 from envs import city
 from envs import bounce
+from envs.miniwob import inbox
 import policy
 import relabel
 import rl
 import utils
+import time
+from envs.miniwob.constants import NUM_INSTANCES
 
 def run_episode(env, policy, experience_observers=None, test=False,
                 exploitation=False):
@@ -50,34 +53,47 @@ def run_episode(env, policy, experience_observers=None, test=False,
     if experience_observers is None:
         experience_observers = []
 
-    episode = []
+    episodes = []
+    start_time = time.time()
     state = env.reset()
     timestep = 0
     renders = [maybe_render(env, None, 0, timestep)]
     hidden_state = None
+    action_computation_time = 0
+    emv_computation_time = 0
     while True:
         # Remove grads to decrease memory usage
         with torch.no_grad():
-            action, next_hidden_state = policy.act(
+            action_comp_time_start = time.time()
+            actions, next_hidden_state = policy.act(
                     state, hidden_state, test=test)
-        next_state, reward, done, info = env.step(action)
+            action_computation_time += time.time() - action_comp_time_start
+        emv_comp_time_start = time.time()
+        next_state, reward, done, info = env.step(actions)
+        emv_computation_time += time.time() - emv_comp_time_start
         timestep += 1
         decoder_distribution = None
         if exploitation:
             decoder_distribution = next_hidden_state
-        renders.append(
-                maybe_render(env, action, reward, timestep, decoder_distribution))
-        experience = rl.Experience(
-                state, action, reward, next_state, done, info, hidden_state,
-                next_hidden_state)
-        episode.append(experience)
-        for observer in experience_observers:
-            observer(experience)
+        #renders.append(
+        #        maybe_render(env, action, reward, timestep, decoder_distribution))
+        experiences = [rl.Experience(
+                state[i], actions[i], reward[i], next_state[i], done[i], info[i], hidden_state[i],
+                next_hidden_state) for i in range(NUM_INSTANCES)]
+        episodes.append(experiences)
 
         state = next_state
         hidden_state = next_hidden_state
-        if done:
-            return episode, renders
+        if all(done):
+            for observer in experience_observers:
+                # Don't interleave experiences
+                for episode in zip(*episodes):
+                    for experience in episode:
+                        observer(experience)
+            print(f"Episode took {time.time() - start_time} seconds")
+            print(f"Action computation time: {action_computation_time}")
+            print(f"EMV computation time: {emv_computation_time}")
+            return episodes, renders
 
 
 def get_env_class(environment_type):
@@ -105,6 +121,8 @@ def get_env_class(environment_type):
         # Dependencies on OpenGL, so only load if absolutely necessary
         from envs.miniworld import sign
         return sign.MiniWorldSign
+    elif environment_type == "email-inbox":
+        return inbox.InboxMetaEnv
     else:
         raise ValueError(
                 "Unsupported environment type: {}".format(environment_type))
@@ -257,17 +275,19 @@ def main():
     exploration_lengths = collections.deque(maxlen=200)
     exploration_steps = 0
     instruction_steps = 0
-    for step in tqdm.tqdm(range(1000000)):
+    for step in tqdm.tqdm(range(0, 1000000, NUM_INSTANCES)):
         exploration_env = create_env(step)
-        exploration_episode, _ = run_episode(
+        exploration_episodes, _ = run_episode(
                 # Exploration episode gets ignored
                 env_class.instruction_wrapper()(
                         exploration_env, [], seed=max(0, step - 1)),
                 exploration_agent)
-        for exp in relabel.TrajectoryExperience.episode_to_device(
-                    exploration_episode, 
-                    exploration_agent.buffer_on_cpu):
-            exploration_agent.update(exp)
+        # Interleave this
+        for episode in zip(*exploration_episodes):
+            for exp in relabel.TrajectoryExperience.episode_to_device(
+                        episode, 
+                        exploration_agent.buffer_on_cpu):
+                exploration_agent.update(exp)
 
         exploration_steps += len(exploration_episode)
         exploration_lengths.append(len(exploration_episode))
@@ -347,7 +367,7 @@ def main():
             test_bug_is_present = []
             test_exploration_lengths = []
             trajectory_embedder.use_ids(False)
-            for test_index in tqdm.tqdm(range(1000)):
+            for test_index in tqdm.tqdm(range(2)):
                 exploration_env = create_env(test_index, test=True)
                 exploration_episode, exploration_render = run_episode(
                         env_class.instruction_wrapper()(

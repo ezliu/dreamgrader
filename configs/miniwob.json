@@ -1,0 +1,28 @@
+{
+  "environment": {
+    "type": "email-inbox"
+  },
+  "instruction_agent": {
+    "type": "learned",
+    "policy": {
+      "embedder": {
+        "trajectory_embedder": {
+          "penalty": 0
+        },
+        "transition_embedder": {
+           "reward_embed_dim": 32
+        }
+      }
+    },
+    "update_freq": 4
+  },
+  "exploration_agent": {
+    "embedder": {
+      "experience_embedder": {
+        "state_embed_dim": 64,
+        "action_embed_dim": 16,
+        "embed_dim": 64
+      }
+    }
+  }
+}

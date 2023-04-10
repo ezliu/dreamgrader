@@ -1,6 +1,6 @@
 import collections
 import math
-import gym
+import gymnasium as gym
 import gym_miniworld
 from gym_miniworld import entity
 from gym_miniworld import miniworld

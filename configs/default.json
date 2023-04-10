@@ -36,7 +36,7 @@
       "type": "sequential",
       "max_buffer_size": 8000,
       "sequence_length": 50,
-      "store_on_cpu": false
+      "store_on_cpu": true
     },
     "learning_rate": 0.0001,
     "sync_target_freq": 5000,
@@ -70,7 +70,7 @@
       "type": "sequential",
       "max_buffer_size": 8000,
       "sequence_length": 50,
-      "store_on_cpu": false
+      "store_on_cpu": true
     },
     "learning_rate": 0.0001,
     "sync_target_freq": 5000,

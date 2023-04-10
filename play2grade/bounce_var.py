@@ -858,7 +858,7 @@ class Bounce(object):
 
 import PIL
 import numpy as np
-import gym
+import gymnasium as gym
 from gym import spaces
 import PIL.Image
 
