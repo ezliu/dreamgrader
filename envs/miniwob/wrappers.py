@@ -56,47 +56,43 @@ class InboxScreenshotWrapper(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
         self._env = env
-        self.observation_space = gym.spaces.Dict({
-            'screenshot': gym.spaces.Box(low=0, high=255, shape=(NUM_INSTANCES, TASK_HEIGHT, TASK_WIDTH, 1), dtype=np.uint8),
-            'questions': gym.spaces.Sequence(
-                gym.spaces.Text(min_length=0, max_length=TEXT_MAX_LENGTH, charset=ASCII_CHARSET)
-            )
-        })
+        self.observation_space = gym.spaces.Sequence(
+            gym.spaces.Dict({
+                'screenshot': gym.spaces.Box(low=0, high=255, shape=(TASK_HEIGHT, TASK_WIDTH, 1), dtype=np.uint8),
+                'question': gym.spaces.Text(min_length=0, max_length=TEXT_MAX_LENGTH, charset=ASCII_CHARSET)
+            })
+        )
 
-    def get_screenshot(self) -> np.ndarray:
+    def get_screenshot(self, instance_idx) -> np.ndarray:
         """Returns a screenshot of the task area as a numpy array."""
-        imgs = []
-        for instance in self._env.instances:
-            png_data = instance.driver.get_screenshot_as_png()
-            pil_image = Image.open(BytesIO(png_data))
-            pil_image = pil_image.crop((TASK_WIDTH_OFFSET, TASK_HEIGHT_OFFSET,
-                                        TASK_WIDTH_OFFSET + TASK_WIDTH,
-                                        TASK_HEIGHT_OFFSET + TASK_HEIGHT))
-            imgs.append(np.array(pil_image).astype(np.uint8)[:, :, :3])
-        s = np.stack(imgs)
-        return s
+        png_data = self._env.instances[instance_idx].driver.get_screenshot_as_png()
+        pil_image = Image.open(BytesIO(png_data))
+        pil_image = pil_image.crop((TASK_WIDTH_OFFSET, TASK_HEIGHT_OFFSET,
+                                    TASK_WIDTH_OFFSET + TASK_WIDTH,
+                                    TASK_HEIGHT_OFFSET + TASK_HEIGHT))
+        return np.array(pil_image).astype(np.uint8)[:, :, :3]
 
     def step(self, action):
         # The body has width 800 and height 210 pixels
         # Since miniwob uses weird coordinates, need to re-center
         # For scroll actions, (405, 210) corresponds to (0, 0) in our screenshot
         _, reward, done, _, info = self._env.step(action)
-        obs = {
-            "screenshot": self.get_screenshot(),
+        obs = [{
+            "screenshot": self.get_screenshot(i),
             "question": ""
-        }
+        } for i in range(NUM_INSTANCES)]
         return obs, reward, done, False, info
 
     def reset(self, *args, **kwargs):
         _, i = self._env.reset(*args, **kwargs)
-        obs = {
-            "screenshot": self.get_screenshot(),
+        obs = [{
+            "screenshot": self.get_screenshot(i),
             "question": ""
-        }
+        } for i in range(NUM_INSTANCES)]
         return obs, i
 
     def render(self, mode=None):
-        return self.get_screenshot()
+        return [self.get_screenshot(i) for i in range(NUM_INSTANCES)]
 
 
 class InboxQAWrapper(gym.Wrapper):
@@ -112,13 +108,15 @@ class InboxQAWrapper(gym.Wrapper):
     def step(self, action):
         obs, reward, done, _, info = self._env.step(action)
         assert self.current_question is not None, "Must call reset() before step()"
-        obs['question'] = self.current_question[0]
+        for i, o in enumerate(obs):
+            o['question'] = self.current_question[i][0]
         return obs, reward, done, False, info
 
     def reset(self, *args, **kwargs):
         obs, info = self._env.reset(*args, **kwargs)
         self.current_question = self._generate_questions()
-        obs["question"] = self.current_question[0]
+        for i, o in enumerate(obs):
+            o['question'] = self.current_question[i][0]
         return obs, info
 
     @staticmethod
@@ -160,7 +158,7 @@ class InboxQAWrapper(gym.Wrapper):
             emails = instance.driver.execute_script("return jQuery._data( document.getElementsByClassName(\"email-thread\")[0], \"events\" ).click[0].data.emails")
             question = self._generate_question(emails)
             questions.append(question)
-        return list(zip(*questions))
+        return questions
 
     def _generate_question(self, emails):
         """Generates a question about the current state of the environment."""
@@ -229,9 +227,10 @@ class InboxQAWrapper(gym.Wrapper):
 # Adapted from gym baselines
 class WarpScreenshot(gym.ObservationWrapper):
     def observation(self, obs):
-        obs["screenshot"] = [cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) for img in obs["screenshot"]]
-        obs["screenshot"] = [cv2.resize(img, (TASK_HEIGHT, TASK_WIDTH), interpolation=cv2.INTER_AREA) for img in obs["screenshot"]]
-        obs["screenshot"] = np.expand_dims(np.stack(obs["screenshot"]), -1)
+        for o in obs:
+            o["screenshot"] = cv2.cvtColor(o["screenshot"], cv2.COLOR_RGB2GRAY)
+            o["screenshot"] = cv2.resize(o["screenshot"], (TASK_HEIGHT, TASK_WIDTH), interpolation=cv2.INTER_AREA)
+            o["screenshot"] = np.expand_dims(o["screenshot"], -1)
         return obs
 
 

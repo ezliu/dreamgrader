@@ -46,12 +46,14 @@ class InstructionWrapper(meta_exploration.InstructionWrapper):
 
     def step(self, action):
         if self._exploitation:
-            done = True
-            reward = int(self.env._env.current_question[1] == action)
+            done = [True] * len(action)
+            reward = []
+            for a, label in zip(action, self.env_id):
+                reward.append(a == label)
             # Take dummy action, since existing action may be out of
             # bounds
             # Bypass parent class
-            state, _, _, info = self.env.step(0)
+            state, _, _, info = self.env.step([0] * len(action))
             return state, reward, done, info
         # Bypass parent class
         return self.env.step(action)
@@ -95,7 +97,7 @@ class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
 
     @property
     def env_id(self):
-        return self._env.current_question[1]
+        return list(zip(*self._env.current_question))[1]
 
     def _step(self, action):
         state, reward, done, _, info = self._env.step(action)
@@ -111,11 +113,15 @@ class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
 
     def render(self, mode=None):
         env_render = self._env.render()
-        image = render.Render(Image.fromarray(env_render))
-        image.write_text("Underlying env ID: {}".format(self._env_id))
-        image.write_text(f"Q: {self._env.current_question[0]}")
-        image.write_text(f"A: {self._env.current_question[1]}")
-        return image
+        imgs = []
+        for i in range(NUM_INSTANCES):
+            img = Image.fromarray(env_render[i])
+            img = render.Render(img)
+            img.write_text("Underlying env ID: {}".format(self._env_id))
+            img.write_text(f"Q: {self._env.current_question[i][0]}")
+            img.write_text(f"A: {self._env.current_question[i][1]}")
+            imgs.append(img)
+        return imgs
 
 
 """

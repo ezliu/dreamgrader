@@ -714,7 +714,6 @@ class RecurrentStateEmbedder(Embedder):
         # (batch_size * sequence_len, embed_dim)
         state_embeds = self._state_embedder(flattened)
         state_embeds = state_embeds.reshape(batch_size, sequence_len, -1)
-
         embeddings = []
         for seq_index in range(sequence_len):
             hidden_state = self._lstm_cell(

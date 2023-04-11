@@ -22,7 +22,61 @@ import utils
 import time
 from envs.miniwob.constants import NUM_INSTANCES
 
+
+
+buffers = {
+    "episodes": {
+        "test": {
+            "exploitation": [],
+            "exploration": []
+        },
+        "train": {
+            "exploitation": [],
+            "exploration": []
+        }
+    },
+    "renders": {
+        "test": {
+            "exploitation": [],
+            "exploration": []
+        },
+        "train": {
+            "exploitation": [],
+            "exploration": []
+        }
+    }
+}
+
+
 def run_episode(env, policy, experience_observers=None, test=False,
+                exploitation=False):
+    global buffers
+
+    episode_buffer = buffers["episodes"]["test" if test else "train"]["exploitation" if exploitation else "exploration"]
+    render_buffer = buffers["renders"]["test" if test else "train"]["exploitation" if exploitation else "exploration"]
+
+    start_time = time.time()
+    if len(episode_buffer) == 0:
+        episodes, renders = _run_episode(
+            env, policy, experience_observers=experience_observers, test=test,
+            exploitation=exploitation)
+        if not exploitation:
+            episode_buffer.extend(episodes)
+            render_buffer.extend(renders)
+        else:
+            # Need to handle that exploitation only uses a specific trajectory
+            episode_buffer.append(episodes[0])
+            render_buffer.append(renders[0])
+    
+    e = episode_buffer.pop(0)
+    r = render_buffer.pop(0)
+    if experience_observers is not None:
+        for observer in experience_observers:
+            for experience in e:
+                observer(experience)
+    return e, r
+
+def _run_episode(env, policy, experience_observers=None, test=False,
                 exploitation=False):
     """Runs a single episode on the environment following the policy.
 
@@ -38,9 +92,8 @@ def run_episode(env, policy, experience_observers=None, test=False,
             test=True. Otherwise, returns list of Nones.
     """
     # Optimization: rendering takes a lot of time.
-    def maybe_render(env, action, reward, timestep, decoder_distribution=None):
+    def maybe_render(render, action, reward, timestep, decoder_distribution=None):
         if test:
-            render = env.render()
             render.write_text("Action: {}".format(str(action)))
             render.write_text("Reward: {}".format(reward))
             render.write_text("Timestep: {}".format(timestep))
@@ -53,47 +106,55 @@ def run_episode(env, policy, experience_observers=None, test=False,
     if experience_observers is None:
         experience_observers = []
 
-    episodes = []
-    start_time = time.time()
+    episodes = [[] for _ in range(NUM_INSTANCES)]
+    
     state = env.reset()
     timestep = 0
-    renders = [maybe_render(env, None, 0, timestep)]
+    renders = [[maybe_render(r, None, 0, timestep)] for r in env.render()]
     hidden_state = None
     action_computation_time = 0
     emv_computation_time = 0
-    while True:
+    done = [False] * NUM_INSTANCES
+    if exploitation:
+        state = [state[0]]
+        done = [done[0]]
+        renders = [renders[0]]
+    while not all(done):
         # Remove grads to decrease memory usage
         with torch.no_grad():
             action_comp_time_start = time.time()
             actions, next_hidden_state = policy.act(
-                    state, hidden_state, test=test)
+                    state, hidden_state if hidden_state is not None else [None] * NUM_INSTANCES, test=test)
+            if not exploitation:
+                next_hidden_state = [(h.reshape((1, *h.shape)), c.reshape(1, *c.shape)) for h, c in zip(next_hidden_state[0], next_hidden_state[1])]
             action_computation_time += time.time() - action_comp_time_start
         emv_comp_time_start = time.time()
+        prev_done = done
         next_state, reward, done, info = env.step(actions)
+        if exploitation:
+            next_state = [next_state[0]]
+            reward = [reward[0]]
+            done = [done[0]]
+            info = [info[0]]
         emv_computation_time += time.time() - emv_comp_time_start
         timestep += 1
         decoder_distribution = None
         if exploitation:
             decoder_distribution = next_hidden_state
-        #renders.append(
-        #        maybe_render(env, action, reward, timestep, decoder_distribution))
-        experiences = [rl.Experience(
-                state[i], actions[i], reward[i], next_state[i], done[i], info[i], hidden_state[i],
-                next_hidden_state) for i in range(NUM_INSTANCES)]
-        episodes.append(experiences)
+        for i, r in enumerate(env.render()):
+            if not prev_done[i]:
+                renders[i].append(
+                        maybe_render(r, actions[i], reward[i], timestep, decoder_distribution[i] if exploitation else None))
+                episodes[i].append(
+                    rl.Experience(
+                    state[i], actions[i], reward[i], next_state[i], done[i], info[i], hidden_state[i] if hidden_state is not None else None,
+                    next_hidden_state[i]))
+            if exploitation:
+                break
 
         state = next_state
         hidden_state = next_hidden_state
-        if all(done):
-            for observer in experience_observers:
-                # Don't interleave experiences
-                for episode in zip(*episodes):
-                    for experience in episode:
-                        observer(experience)
-            print(f"Episode took {time.time() - start_time} seconds")
-            print(f"Action computation time: {action_computation_time}")
-            print(f"EMV computation time: {emv_computation_time}")
-            return episodes, renders
+    return episodes, renders
 
 
 def get_env_class(environment_type):
@@ -165,6 +226,7 @@ def log_episode(exploration_episode, exploration_rewards, distances, path):
 
 
 def precision_recall(bug_is_present, rewards):
+    return 0, 0
     # Compute the precision and recall given a list of bug is present and
     # parallel list of rewards
     correct_bug_detected = sum(np.array(bug_is_present) * np.array(rewards))
@@ -275,19 +337,18 @@ def main():
     exploration_lengths = collections.deque(maxlen=200)
     exploration_steps = 0
     instruction_steps = 0
-    for step in tqdm.tqdm(range(0, 1000000, NUM_INSTANCES)):
+    for step in tqdm.tqdm(range(1000000)):
         exploration_env = create_env(step)
-        exploration_episodes, _ = run_episode(
+        exploration_episode, _ = run_episode(
                 # Exploration episode gets ignored
                 env_class.instruction_wrapper()(
                         exploration_env, [], seed=max(0, step - 1)),
                 exploration_agent)
         # Interleave this
-        for episode in zip(*exploration_episodes):
-            for exp in relabel.TrajectoryExperience.episode_to_device(
-                        episode, 
-                        exploration_agent.buffer_on_cpu):
-                exploration_agent.update(exp)
+        for exp in relabel.TrajectoryExperience.episode_to_device(
+                    exploration_episode,
+                    exploration_agent.buffer_on_cpu):
+            exploration_agent.update(exp)
 
         exploration_steps += len(exploration_episode)
         exploration_lengths.append(len(exploration_episode))
@@ -480,4 +541,12 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        from miniwob.environment import INSTANCES
+
+        for instance in INSTANCES:
+            instance.close()
+
+        raise e

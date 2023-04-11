@@ -91,17 +91,18 @@ class MetaExplorationEnv(abc.ABC, gym.Env):
 
     def step(self, action):
         state, reward, done, info = self._step(action)
-        state = MetaExplorationState(
-                self._wrapper(state), reward, action, self.env_id)
+        state = [MetaExplorationState(
+                self._wrapper(state[i]), reward[i], action[i], self.env_id[i]) for i in range(len(action))]
         return state, reward, done, info
 
     @abc.abstractmethod
     def _reset(self):
         raise NotImplementedError()
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
         state = self._reset()
-        state = MetaExplorationState(self._wrapper(state), 0, None, self.env_id)
+        state = [MetaExplorationState(
+                self._wrapper(state[i]), 0, None, self.env_id[i]) for i in range(len(state))]
         return state
 
     @property
@@ -246,25 +247,26 @@ class InstructionWrapper(abc.ABC, gym.Wrapper):
             if not (self._num_episodes > 1 and self._fixed_instructions):
                 self._current_instructions = self._generate_instructions(
                         test=self._test)
-        return InstructionState(
-                state.observation, self._current_instructions, None, 0, False,
-                self._trajectory, state.env_id)
+        return [InstructionState(
+                s.observation, self._current_instructions, None, 0, False,
+                self._trajectory, s.env_id) for s in state]
 
     def step(self, action):
         state, original_reward, done, info = super().step(action)
-        state = InstructionState(
-                state.observation, self._current_instructions, action, None, False,
-                self._trajectory, state.env_id)
+        state = [InstructionState(
+                s.observation, self._current_instructions, a, None, False,
+                self._trajectory, s.env_id) for a, s in zip(action, state)]
 
-        if self._num_episodes == 1 and self._first_episode_no_instruction:
-            reward, instructions_complete = 0, False
-        else:
-            reward, instructions_complete = self._reward(
-                    state, action, original_reward)
+        for i in range(len(state)):
+            if self._num_episodes == 1 and self._first_episode_no_instruction:
+                reward, instructions_complete = 0, False
+            else:
+                reward, instructions_complete = self._reward(
+                        state[i], action[i], original_reward[i])
 
-        done = instructions_complete or done
-        state = state._replace(prev_reward=reward, done=done)
+            done = instructions_complete or done[i]
+            state[i] = state[i]._replace(prev_reward=reward, done=done)
 
         if self._num_episodes == 1 and self._first_episode_no_optimization:
-            reward = 0
+            reward = [0 for _ in range(len(state))]
         return state, reward, done, info
