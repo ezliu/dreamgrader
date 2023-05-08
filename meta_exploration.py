@@ -5,6 +5,8 @@ import gymnasium as gym
 import torch
 import numpy as np
 
+from envs.miniwob.constants import NUM_INSTANCES
+
 
 # TODO: Switch from namedtuple to dataclass
 class MetaExplorationState(collections.namedtuple(
@@ -62,8 +64,8 @@ class MetaExplorationEnv(abc.ABC, gym.Env):
         random = np.random.RandomState(seed)
         train_ids, test_ids = cls.env_ids()
         split = test_ids if test else train_ids
-        env_id = split[random.randint(len(split))]
-        return cls(env_id, wrapper)
+        env_ids = [split[random.randint(len(split))] for _ in range(NUM_INSTANCES)]
+        return cls(env_ids, wrapper)
 
     @abc.abstractmethod
     def env_ids(cls):
@@ -138,14 +140,14 @@ class InstructionState(collections.namedtuple(
         - env_id (int): see MetaExplorationState.
     """
     def cpu(self):
-        if not self.observation.is_cuda and not self.trajectory[0].state.observation.is_cuda:
+        if not self.observation.is_cuda and len(self.trajectory) > 0 and not self.trajectory[0].state.observation.is_cuda:
             return self
         return self._replace(
             observation=self.observation.cpu().pin_memory(),
             trajectory=[exp.cpu() for exp in self.trajectory])
 
     def cuda(self):
-        if self.observation.is_cuda and self.trajectory[0].state.observation.is_cuda:
+        if self.observation.is_cuda and (len(self.trajectory) > 0 and self.trajectory[0].state.observation.is_cuda):
             return self
         return self._replace(
             observation=self.observation.cuda(non_blocking=True),

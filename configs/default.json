@@ -24,7 +24,7 @@
         },
         "trajectory_embedder": {
           "type": "ours",
-          "penalty": 0.1
+          "penalty": 0.0
         },
         "attention_query_dim": 64,
         "embed_dim": 64

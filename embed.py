@@ -327,11 +327,12 @@ class InstructionPolicyEmbedder(Embedder):
         self._final_layer = nn.Linear(256, embed_dim)
 
     def forward(self, states, hidden_state):
-        obs_embed, hidden_state = self._obs_embedder(states, hidden_state)
+        # obs_embed, hidden_state = self._obs_embedder(states, hidden_state)
         trajectory_embed, _ = self._trajectory_embedder(
                 [state[0].trajectory for state in states])
         # This is just the decoder prediction
-        return trajectory_embed, hidden_state
+        #return trajectory_embed, hidden_state
+        return trajectory_embed, None
 
         if len(obs_embed.shape) > 2:
             trajectory_embed = trajectory_embed.unsqueeze(1).expand(
@@ -926,7 +927,7 @@ class MiniWobQuestionEmbedder(Embedder):
     dropout = 0.2  # dropout probability
     transf_embed_dim = 128
     
-    def __init__(self, observation_space, embed_dim=512):
+    def __init__(self, observation_space, embed_dim=256):
         super().__init__(embed_dim)
 
         self.tokenizer = get_tokenizer('basic_english')
@@ -1016,11 +1017,13 @@ class PositionalEncoding(nn.Module):
 
 
 class MiniWobEmbedder(Embedder):
-    nlayers = 8  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
-    nhead = 8  # number of heads in nn.MultiheadAttention
+    # nlayers = 8
+    # nhead = 8
+    nlayers = 6  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
+    nhead = 4  # number of heads in nn.MultiheadAttention
     dropout = 0.2  # dropout probability
     
-    def __init__(self, observation_space, embed_dim=512):
+    def __init__(self, observation_space, embed_dim=256):
         super().__init__(embed_dim)
 
         self.question_embedder = MiniWobQuestionEmbedder(None, embed_dim=embed_dim)

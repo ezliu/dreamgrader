@@ -1,4 +1,5 @@
 import abc
+import textwrap
 from PIL import Image, ImageDraw
 
 
@@ -16,7 +17,7 @@ class Render(abc.ABC):
         """
         self._main_image = main_image
         self._banner = Image.new(
-                mode="RGBA", size=(main_image.width, 150), color="white")
+                mode="RGBA", size=(main_image.width, 250), color="white")
         self._text = []
 
     def write_text(self, text):
@@ -25,7 +26,9 @@ class Render(abc.ABC):
         Args:
             text (str): text to display on top of rendering.
         """
-        self._text.append(text)
+        # TODO: test this!
+        for line in textwrap.wrap(text, width=20):
+            self._text.append(line)
 
     def image(self):
         """Returns a PIL.Image representation of this rendering."""

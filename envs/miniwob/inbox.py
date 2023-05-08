@@ -16,7 +16,7 @@ import render
 import meta_exploration
 from envs.miniwob.wrappers import InboxScreenshotWrapper, InboxQAWrapper, WarpScreenshot, RestrictedActionWrapper
 from miniwob.envs.miniwob_envs import EmailInboxEnv
-from envs.miniwob.constants import NUM_INSTANCES
+from envs.miniwob.constants import NUM_INSTANCES, TASK_HEIGHT, TASK_WIDTH
 
 
 class InstructionWrapper(meta_exploration.InstructionWrapper):
@@ -32,6 +32,7 @@ class InstructionWrapper(meta_exploration.InstructionWrapper):
             first_episode_no_optimization=first_episode_no_optimization,
             fixed_instructions=fixed_instructions)
         self._exploitation = exploitation
+        self.env.exploitation = exploitation
         if exploitation:
             self.action_space = spaces.Discrete(2)
 
@@ -49,7 +50,7 @@ class InstructionWrapper(meta_exploration.InstructionWrapper):
             done = [True] * len(action)
             reward = []
             for a, label in zip(action, self.env_id):
-                reward.append(a == label)
+                reward.append((a == label).item())
             # Take dummy action, since existing action may be out of
             # bounds
             # Bypass parent class
@@ -60,9 +61,9 @@ class InstructionWrapper(meta_exploration.InstructionWrapper):
 
 
 class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
-    MAX_STEPS = 10
-    NUM_TRAIN = 400
-    NUM_TEST = 100
+    MAX_STEPS = 7
+    NUM_TRAIN = 1000000
+    NUM_TEST = 1000
 
     def __init__(self, env_id, _):
         super().__init__(env_id, EmailInboxObservation)
@@ -70,7 +71,7 @@ class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
         
         env = EmailInboxEnv(num_instances=NUM_INSTANCES)
         env = InboxScreenshotWrapper(env)
-        env = InboxQAWrapper(env)
+        env = InboxQAWrapper(env, env_id)
         env = WarpScreenshot(env)
         env = RestrictedActionWrapper(env)
         self.observation_space = gym.spaces.Dict({
@@ -82,6 +83,7 @@ class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
         self._env = env
         self._env.reset()
         self.action_space = self._env.action_space
+        self.exploitation = False
 
     @classmethod
     def instruction_wrapper(cls):
@@ -100,14 +102,31 @@ class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
         return list(zip(*self._env.current_question))[1]
 
     def _step(self, action):
-        state, reward, done, _, info = self._env.step(action)
+        # Hack to speed up env during exploitation (don't need to actually take steps)
+        if not self.exploitation:
+            state, reward, done, _, info = self._env.step(action)
+        else:
+            state = [{
+                "screenshot": np.zeros((TASK_HEIGHT, TASK_WIDTH, 1)),
+                "question": "None"
+            } for _ in range(NUM_INSTANCES)]
+            reward = [0] * NUM_INSTANCES
+            info = [None] * NUM_INSTANCES
+            done = [True] * NUM_INSTANCES
         self._steps += 1
         done = done if self._steps < type(self).MAX_STEPS else [True]*NUM_INSTANCES
         return state, reward, done, info
 
     def _reset(self):
+        # old hack but messes up evaluation of correct answer
         self._steps = 0
-        np.random.seed(self._env_id)
+        """if not self.exploitation:
+            obs, _ = self._env.reset(seed=self._env_id)
+        else:
+            obs = [{
+                "screenshot": np.zeros((TASK_HEIGHT, TASK_WIDTH, 1)),
+                "question": "None"
+            } for _ in range(NUM_INSTANCES)]"""
         obs, _ = self._env.reset(seed=self._env_id)
         return obs
 
@@ -117,30 +136,25 @@ class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
         for i in range(NUM_INSTANCES):
             img = Image.fromarray(env_render[i])
             img = render.Render(img)
-            img.write_text("Underlying env ID: {}".format(self._env_id))
+            img.write_text("Underlying env ID: {}".format(self._env_id[i]))
             img.write_text(f"Q: {self._env.current_question[i][0]}")
             img.write_text(f"A: {self._env.current_question[i][1]}")
             imgs.append(img)
         return imgs
+    
+    @property
+    def underlying_env_id(self):
+        return self._env_id
 
+    def set_underlying_env_id(self, id):
+        self._env_id = id
+        self._env.set_qa_env_ids(id)
 
-"""
-def cpu(self):
-    if self.observation.is_cuda:
-        return self._replace(
-            observation=self.observation.cpu().pin_memory())
-    return self
-
-def cuda(self):
-    if self.observation.is_cuda:
-        return self
-    return self._replace(
-        observation=self.observation.cuda(non_blocking=True))
-"""
 
 class EmailInboxObservation:
     def __init__(self, observation):
-        observation["screenshot"] = torch.tensor(observation["screenshot"])
+        if not isinstance(observation["screenshot"], torch.Tensor):
+            observation["screenshot"] = torch.tensor(observation["screenshot"])
         self._observation = observation
 
     @property
@@ -157,13 +171,19 @@ class EmailInboxObservation:
 
     def cpu(self):
         # Hacky way to accomodate cpu/cuda switching in observation buffer
-        self._observation["screenshot"] = self._observation["screenshot"].cpu()
-        return self
+        return EmailInboxObservation({
+            "screenshot": self._observation["screenshot"].detach().cpu(),
+            "question": self._observation["question"]
+        })
 
     def pin_memory(self):
-        self._observation["screenshot"] = self._observation["screenshot"].pin_memory()
-        return self
+        return EmailInboxObservation({
+            "screenshot": self._observation["screenshot"].pin_memory(),
+            "question": self._observation["question"]
+        })
 
     def cuda(self, **kwargs):
-        self._observation["screenshot"] = self._observation["screenshot"].cuda(**kwargs)
-        return self
+        return EmailInboxObservation({
+            "screenshot": self._observation["screenshot"].cuda(**kwargs),
+            "question": self._observation["question"]
+        })

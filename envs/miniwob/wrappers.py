@@ -100,9 +100,10 @@ class InboxQAWrapper(gym.Wrapper):
 
     QUESTION_TYPES = 5
 
-    def __init__(self, env):
+    def __init__(self, env, env_ids):
         super().__init__(env)
         self._env = env
+        self._env_ids = env_ids
         self.current_question = None
 
     def step(self, action):
@@ -156,14 +157,21 @@ class InboxQAWrapper(gym.Wrapper):
         for instance in self._env.instances:
             # Hacky way to get the emails from the JS code
             emails = instance.driver.execute_script("return jQuery._data( document.getElementsByClassName(\"email-thread\")[0], \"events\" ).click[0].data.emails")
+            np.random.seed(self._env_ids[instance.index])
             question = self._generate_question(emails)
             questions.append(question)
         return questions
+    
+    def set_qa_env_ids(self, env_ids):
+        self._env_ids = env_ids
 
     def _generate_question(self, emails):
         """Generates a question about the current state of the environment."""
         is_true = np.random.randint(2)
-        question_type = np.random.randint(self.QUESTION_TYPES)
+
+        # question_type = np.random.randint(self.QUESTION_TYPES)
+        question_type = 2
+        
         names = [email['name'] for email in emails]
         if question_type == 0:
             # Generate prompt for "Is there an email from X?"
