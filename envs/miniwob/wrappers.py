@@ -93,6 +93,41 @@ class InboxScreenshotWrapper(gym.Wrapper):
 
     def render(self, mode=None):
         return [self.get_screenshot(i) for i in range(NUM_INSTANCES)]
+    
+
+class InboxDOMWrapper(gym.Wrapper):
+    """Wrapper that adds the DOM to the info dict returned by step()."""
+
+    def __init__(self, env):
+        super().__init__(env)
+        self._env = env
+
+    def step(self, action):
+        obs, reward, done, _, info = self._env.step(action)
+        for i, o in enumerate(obs):
+            o['dom'] = self.get_dom(i)
+        return obs, reward, done, False, info
+
+    def reset(self, *args, **kwargs):
+        obs, info = self._env.reset(*args, **kwargs)
+        for i, o in enumerate(obs):
+            o['dom'] = self.get_dom(i)
+        return obs, info
+    
+    @classmethod
+    def convert_dom_to_text(cls, dom):
+        start = f"< {dom['tag'].lower()} "
+        start += f"class={dom['classes']} " if len(dom["classes"]) > 0 else ""
+        start += f"id={dom['id']} " if len(dom["id"]) > 0 else ""
+        start += "> "
+        start += f" {dom['text']} " if 'text' in dom.keys() and len(dom["text"]) > 0 else ""
+        start += f"{' '.join([cls.convert_dom_to_text(c) for c in dom['children']])} " if len(dom["children"]) > 0 else ""
+        start += f"< /{dom['tag'].lower()} >"
+        return start
+    
+    def get_dom(self, instance_idx):
+        dom = self._env.instances[instance_idx].driver.execute_script("return core.getDOMInfo();")
+        return self.convert_dom_to_text(dom)
 
 
 class InboxQAWrapper(gym.Wrapper):

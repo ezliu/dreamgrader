@@ -14,7 +14,7 @@ from gym import spaces
 
 import render
 import meta_exploration
-from envs.miniwob.wrappers import InboxScreenshotWrapper, InboxQAWrapper, WarpScreenshot, RestrictedActionWrapper
+from envs.miniwob.wrappers import InboxScreenshotWrapper, InboxQAWrapper, WarpScreenshot, RestrictedActionWrapper, InboxDOMWrapper
 from miniwob.envs.miniwob_envs import EmailInboxEnv
 from envs.miniwob.constants import NUM_INSTANCES, TASK_HEIGHT, TASK_WIDTH
 
@@ -72,6 +72,7 @@ class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
         env = EmailInboxEnv(num_instances=NUM_INSTANCES)
         env = InboxScreenshotWrapper(env)
         env = InboxQAWrapper(env, env_id)
+        env = InboxDOMWrapper(env)
         env = WarpScreenshot(env)
         env = RestrictedActionWrapper(env)
         self.observation_space = gym.spaces.Dict({
@@ -108,7 +109,8 @@ class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
         else:
             state = [{
                 "screenshot": np.zeros((TASK_HEIGHT, TASK_WIDTH, 1)),
-                "question": "None"
+                "question": "None",
+                "dom": "None"
             } for _ in range(NUM_INSTANCES)]
             reward = [0] * NUM_INSTANCES
             info = [None] * NUM_INSTANCES
@@ -168,22 +170,29 @@ class EmailInboxObservation:
     @property
     def question(self):
         return self._observation["question"]
+    
+    @property
+    def dom(self):
+        return self._observation["dom"]
 
     def cpu(self):
         # Hacky way to accomodate cpu/cuda switching in observation buffer
         return EmailInboxObservation({
             "screenshot": self._observation["screenshot"].detach().cpu(),
-            "question": self._observation["question"]
+            "question": self._observation["question"],
+            "dom": self._observation["dom"]
         })
 
     def pin_memory(self):
         return EmailInboxObservation({
             "screenshot": self._observation["screenshot"].pin_memory(),
-            "question": self._observation["question"]
+            "question": self._observation["question"],
+            "dom": self._observation["dom"]
         })
 
     def cuda(self, **kwargs):
         return EmailInboxObservation({
             "screenshot": self._observation["screenshot"].cuda(**kwargs),
-            "question": self._observation["question"]
+            "question": self._observation["question"],
+            "dom": self._observation["dom"]
         })

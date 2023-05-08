@@ -12,7 +12,7 @@ from torchtext.vocab import build_vocab_from_iterator
 from envs import bounce
 from envs import grid
 from envs import miniwob
-from envs.miniwob.constants import QUESTIONS, PEOPLE_NAMES, LOREM_WORDS
+from envs.miniwob.constants import QUESTIONS, PEOPLE_NAMES, LOREM_WORDS, HTML_TOKENS
 import relabel
 import utils
 
@@ -933,6 +933,9 @@ class MiniWobQuestionEmbedder(Embedder):
         self.tokenizer = get_tokenizer('basic_english')
         phrases = QUESTIONS + [" ".join(LOREM_WORDS), " ".join(PEOPLE_NAMES), "."]
         self.vocab = build_vocab_from_iterator(map(self.tokenizer, phrases), specials=["<unk>", "<pad>", "<bos>"])
+        for t in HTML_TOKENS:
+            if t not in self.vocab:
+                self.vocab.append_token(t)
         self.vocab.set_default_index(self.vocab["<unk>"])
         self.model = TransformerEmbedder(len(self.vocab),self.transf_embed_dim, self.nhead, self.d_hid, self.nlayers, self.dropout)
         self.output_proj = nn.Linear(self.transf_embed_dim, embed_dim)
@@ -1036,9 +1039,11 @@ class MiniWobEmbedder(Embedder):
     def forward(self, obs):
         if isinstance(obs, list):
             question = [o.question for o in obs]
+            dom = [o.dom for o in obs]
             screenshot = torch.stack([o.screenshot for o in obs])
         else:
             question = [obs.question]
+            dom = [obs.dom]
             screenshot = obs.screenshot.unsqueeze(0)
         
         # Check batch size
@@ -1046,6 +1051,7 @@ class MiniWobEmbedder(Embedder):
         B = len(question)
 
         question_embedding = self.question_embedder(question).unsqueeze(1)
+        dom_embedding = self.question_embedder(dom).unsqueeze(1)
         screenshot_embedding = self.screenshot_embedder(screenshot)
         extra_emb1 = self.extra_embedder(torch.tensor([[0]]))
         extra_emb2 = self.extra_embedder(torch.tensor([[1]]))
@@ -1053,6 +1059,7 @@ class MiniWobEmbedder(Embedder):
         extra_emb2 = torch.repeat_interleave(extra_emb2, B, dim=0)
         multi_embedding = torch.cat([
             question_embedding,
+            dom_embedding,
             screenshot_embedding,
             extra_emb1,
             extra_emb2
