@@ -61,7 +61,7 @@ class InstructionWrapper(meta_exploration.InstructionWrapper):
 
 
 class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
-    MAX_STEPS = 7
+    MAX_STEPS = 6
     NUM_TRAIN = 1000000
     NUM_TEST = 1000
 

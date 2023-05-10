@@ -117,11 +117,11 @@ class InboxDOMWrapper(gym.Wrapper):
     @classmethod
     def convert_dom_to_text(cls, dom):
         start = f"< {dom['tag'].lower()} "
-        start += f"class={dom['classes']} " if len(dom["classes"]) > 0 else ""
-        start += f"id={dom['id']} " if len(dom["id"]) > 0 else ""
+        start += f"class={dom['classes']} " if 'classes' in dom.keys() and len(dom["classes"]) > 0 else ""
+        start += f"id={dom['id']} " if 'id' in dom.keys() and len(dom["id"]) > 0 else ""
         start += "> "
         start += f" {dom['text']} " if 'text' in dom.keys() and len(dom["text"]) > 0 else ""
-        start += f"{' '.join([cls.convert_dom_to_text(c) for c in dom['children']])} " if len(dom["children"]) > 0 else ""
+        start += f"{' '.join([cls.convert_dom_to_text(c) for c in dom['children']])} " if 'children' in dom.keys() and len(dom["children"]) > 0 else ""
         start += f"< /{dom['tag'].lower()} >"
         return start
     
@@ -229,7 +229,7 @@ class InboxQAWrapper(gym.Wrapper):
                     subject = emails[email_idx]['subject']
                 else:
                     name = self._generate_name(exclude=names)
-                    subject = self._generate_words(1, 3, exclude=emails[email_idx]['subject'])
+                    subject = self._generate_words(1, 3)
             question = f"Is there an email from {name} with a subject line about '{subject}'?"
         elif question_type == 2:
             if is_true:
@@ -241,17 +241,20 @@ class InboxQAWrapper(gym.Wrapper):
                 email_idx = np.random.randint(len(emails))
                 if false_case == 0:
                     name = emails[email_idx]['name']
-                    body = self._generate_words(5, 15, exclude=emails[email_idx]['body'])
+                    emails_for_name = [e for e in emails if e['name'] == name]
+                    bodies = [w.lower().replace(".", "") for e in emails_for_name for w in e['body'].split()]
+                    subjects = [w.lower().replace(".", "") for e in emails_for_name for w in e['subject'].split()]
+                    body = self._generate_words(5, 15, exclude=list(set(bodies + subjects)))
                 elif false_case == 1:
                     name = self._generate_name(exclude=names)
                     body = emails[email_idx]['body']
                 else:
                     name = self._generate_name(exclude=names)
-                    body =self._generate_words(5, 15, exclude=emails[email_idx]['body'])
-            body = body.split()
-            state_idx = np.random.randint(max(len(body) - 5, 1))
-            body_slice = " ".join(body[state_idx:state_idx+5])
-            question = f"Is there an email from {name} about '{body_slice}'?"
+                    body =self._generate_words(5, 15)
+            body = [w.strip().replace(",", "").replace(".", "") for w in body.split()]
+            # state_idx = np.random.randint(max(len(body) - 5, 1))
+            # body_slice = " ".join(body[state_idx:state_idx+5])
+            question = f"Is there an email from {name} about {body[4].lower()} ?"
         elif question_type == 3:
             # Generate prompt for "Is the Xth recent email from Y?"
             email_idx = np.random.randint(len(emails))
@@ -280,7 +283,7 @@ class WarpScreenshot(gym.ObservationWrapper):
 class RestrictedActionWrapper(gym.ActionWrapper):
     CLICK_LOCATIONS = [(10, 10), (10, 30), (10, 50), (10, 70), (10, 90), (10, 110), (10, 130), (10, 150), (30, 10), (30, 30), (30, 50), (30, 70), (30, 90), (30, 110), (30, 130), (30, 150), (50, 10), (50, 30), (50, 50), (50, 70), (50, 90), (50, 110), (50, 130), (50, 150), (70, 10), (70, 30), (70, 50), (70, 70), (70, 90), (70, 110), (70, 130), (70, 150), (90, 10), (90, 30), (90, 50), (90, 70), (90, 90), (90, 110), (90, 130), (90, 150), (110, 10), (110, 30), (110, 50), (110, 70), (110, 90), (110, 110), (110, 130), (110, 150), (130, 10), (130, 30), (130, 50), (130, 70), (130, 90), (130, 110), (130, 130), (130, 150)]
     SCROLL_LOCATION = (TASK_HEIGHT//2, TASK_WIDTH//2)
-    SCROLL_AMOUNT = 10
+    SCROLL_AMOUNT = 120
 
     def __init__(self, env):
         super().__init__(env)

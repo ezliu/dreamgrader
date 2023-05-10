@@ -921,11 +921,11 @@ class Residual(nn.Module):  #@save
 
 
 class MiniWobQuestionEmbedder(Embedder):
-    d_hid = 256  # dimension of the feedforward network model in nn.TransformerEncoder
+    d_hid = 128  # dimension of the feedforward network model in nn.TransformerEncoder
     nlayers = 1  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
     nhead = 4  # number of heads in nn.MultiheadAttention
     dropout = 0.2  # dropout probability
-    transf_embed_dim = 128
+    transf_embed_dim = 64
     
     def __init__(self, observation_space, embed_dim=256):
         super().__init__(embed_dim)

@@ -448,7 +448,7 @@ def main():
             visualize_dir = os.path.join(exp_dir, "visualize", str(step), "train")
             os.makedirs(visualize_dir, exist_ok=True)
             clear_buffers()
-            for train_index in tqdm.tqdm(range(128)):
+            for train_index in tqdm.tqdm(range(80)):
                 exploration_env = create_env(train_index // NUM_INSTANCES)
                 # Test flags here only refer to making agent act with test flag and
                 # not test split environments
