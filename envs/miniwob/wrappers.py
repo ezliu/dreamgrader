@@ -205,13 +205,14 @@ class InboxQAWrapper(gym.Wrapper):
         is_true = np.random.randint(2)
 
         # question_type = np.random.randint(self.QUESTION_TYPES)
-        question_type = 2
+        question_type = 0
         
         names = [email['name'] for email in emails]
         if question_type == 0:
             # Generate prompt for "Is there an email from X?"
             name = self._pick_name(emails) if is_true else self._generate_name(exclude=names)
-            question = f"Is there an email from {name}?"
+            #question = f"Is there an email from {name}?"
+            question = f"{name}"
         elif question_type == 1:
             # Generate prompt for "Is there an email from X with a subject line about Y?"
             if is_true:
@@ -287,7 +288,8 @@ class RestrictedActionWrapper(gym.ActionWrapper):
 
     def __init__(self, env):
         super().__init__(env)
-        self._action_space = gym.spaces.Discrete(len(self.CLICK_LOCATIONS) + 2)
+        # self._action_space = gym.spaces.Discrete(len(self.CLICK_LOCATIONS) + 2)
+        self._action_space = gym.spaces.Discrete(2)
 
     def _convert_action(self, action):
         action = int(action)
@@ -303,9 +305,10 @@ class RestrictedActionWrapper(gym.ActionWrapper):
                 TASK_HEIGHT_OFFSET + self.SCROLL_LOCATION[0], 
                 0, -self.SCROLL_AMOUNT)
         else:
-            miniwob_action = create_coord_click_action(
+            """miniwob_action = create_coord_click_action(
                 TASK_WIDTH_OFFSET + self.CLICK_LOCATIONS[action-2][1], 
-                TASK_HEIGHT_OFFSET + self.CLICK_LOCATIONS[action-2][0])
+                TASK_HEIGHT_OFFSET + self.CLICK_LOCATIONS[action-2][0])"""
+            raise ValueError("Invalid action (most be 0 or 1)")
         return miniwob_action
 
     def action(self, actions):

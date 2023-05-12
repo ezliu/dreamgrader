@@ -13,3 +13,5 @@ geckodriver
 msedgedriver
 .buildt/
 experiments/
+tmp.sh
+sbatch/

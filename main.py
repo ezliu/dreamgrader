@@ -159,6 +159,8 @@ def _run_episode(env, policy, experience_observers=None, test=False,
             actions, next_hidden_state = policy.act(
                     state, hidden_state if hidden_state is not None else [None] * NUM_INSTANCES, test=test)
             if not exploitation:
+                actions = [0 for _ in range(NUM_INSTANCES)]
+            if not exploitation:
                 next_hidden_state = [(h.reshape((1, *h.shape)), c.reshape(1, *c.shape)) for h, c in zip(next_hidden_state[0], next_hidden_state[1])]
             action_computation_time += time.time() - action_comp_time_start
         emv_comp_time_start = time.time()
@@ -375,7 +377,7 @@ def main():
             test_exploration_lengths = []
             trajectory_embedder.use_ids(False)
             clear_buffers()
-            for test_index in tqdm.tqdm(range(480)):
+            for test_index in tqdm.tqdm(range(16)):
                 exploration_env = create_env(test_index // NUM_INSTANCES, test=True)
                 exploration_episode, exploration_render = run_episode(
                         env_class.instruction_wrapper()(
@@ -448,7 +450,8 @@ def main():
             visualize_dir = os.path.join(exp_dir, "visualize", str(step), "train")
             os.makedirs(visualize_dir, exist_ok=True)
             clear_buffers()
-            for train_index in tqdm.tqdm(range(80)):
+            train_no_eps_rewards = []
+            for train_index in tqdm.tqdm(range(16)):
                 exploration_env = create_env(train_index // NUM_INSTANCES)
                 # Test flags here only refer to making agent act with test flag and
                 # not test split environments
@@ -475,7 +478,11 @@ def main():
                         visualize_dir, "{}-exploration.gif".format(train_index))
                 frames[0].save(save_path, save_all=True, append_images=frames[1:],
                                              duration=750, loop=0)
+                train_no_eps_rewards.append(sum(exp.reward for exp in episode))
             trajectory_embedder.use_ids(True)
+            tb_writer.add_scalar(
+                    "reward/train_no_eps", np.mean(train_no_eps_rewards), step,
+                    exploration_steps + instruction_steps)
 
         exploration_env = create_env(step // NUM_INSTANCES)
         exploration_episode, _ = run_episode(

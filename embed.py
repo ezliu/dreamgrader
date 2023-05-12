@@ -933,9 +933,9 @@ class MiniWobQuestionEmbedder(Embedder):
         self.tokenizer = get_tokenizer('basic_english')
         phrases = QUESTIONS + [" ".join(LOREM_WORDS), " ".join(PEOPLE_NAMES), "."]
         self.vocab = build_vocab_from_iterator(map(self.tokenizer, phrases), specials=["<unk>", "<pad>", "<bos>"])
-        for t in HTML_TOKENS:
-            if t not in self.vocab:
-                self.vocab.append_token(t)
+        #for t in HTML_TOKENS:
+        #    if t not in self.vocab:
+        #        self.vocab.append_token(t)
         self.vocab.set_default_index(self.vocab["<unk>"])
         self.model = TransformerEmbedder(len(self.vocab),self.transf_embed_dim, self.nhead, self.d_hid, self.nlayers, self.dropout)
         self.output_proj = nn.Linear(self.transf_embed_dim, embed_dim)
@@ -1051,7 +1051,7 @@ class MiniWobEmbedder(Embedder):
         B = len(question)
 
         question_embedding = self.question_embedder(question).unsqueeze(1)
-        dom_embedding = self.question_embedder(dom).unsqueeze(1)
+        # dom_embedding = self.question_embedder(dom).unsqueeze(1)
         screenshot_embedding = self.screenshot_embedder(screenshot)
         extra_emb1 = self.extra_embedder(torch.tensor([[0]]))
         extra_emb2 = self.extra_embedder(torch.tensor([[1]]))
@@ -1059,7 +1059,7 @@ class MiniWobEmbedder(Embedder):
         extra_emb2 = torch.repeat_interleave(extra_emb2, B, dim=0)
         multi_embedding = torch.cat([
             question_embedding,
-            dom_embedding,
+            # dom_embedding,
             screenshot_embedding,
             extra_emb1,
             extra_emb2
