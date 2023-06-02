@@ -15,3 +15,6 @@ msedgedriver
 experiments/
 tmp.sh
 sbatch/
+data/
+data
+data/*

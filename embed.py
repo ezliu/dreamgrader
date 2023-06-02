@@ -16,6 +16,7 @@ from envs.miniwob.constants import QUESTIONS, PEOPLE_NAMES, LOREM_WORDS, HTML_TO
 import relabel
 import utils
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class Embedder(abc.ABC, nn.Module):
     """Defines the embedding of an object in the forward method.
@@ -933,22 +934,23 @@ class MiniWobQuestionEmbedder(Embedder):
         self.tokenizer = get_tokenizer('basic_english')
         phrases = QUESTIONS + [" ".join(LOREM_WORDS), " ".join(PEOPLE_NAMES), "."]
         self.vocab = build_vocab_from_iterator(map(self.tokenizer, phrases), specials=["<unk>", "<pad>", "<bos>"])
-        #for t in HTML_TOKENS:
+        # for t in HTML_TOKENS:
         #    if t not in self.vocab:
-        #        self.vocab.append_token(t)
+        #       self.vocab.append_token(t)
+               
         self.vocab.set_default_index(self.vocab["<unk>"])
         self.model = TransformerEmbedder(len(self.vocab),self.transf_embed_dim, self.nhead, self.d_hid, self.nlayers, self.dropout)
         self.output_proj = nn.Linear(self.transf_embed_dim, embed_dim)
 
     def forward(self, obs):
         """Expects shape (batch_size, 1)"""
-        obs = [torch.tensor([self.vocab["<bos>"]] + self.vocab(self.tokenizer(item)), dtype=torch.long) for item in obs]
+        obs = [torch.tensor([self.vocab["<bos>"]] + self.vocab(self.tokenizer(item))) for item in obs]
         # Pad to max length
-        obs = nn.utils.rnn.pad_sequence(obs, batch_first=True, padding_value=self.vocab["<pad>"])
+        obs = nn.utils.rnn.pad_sequence(obs, batch_first=True, padding_value=self.vocab["<pad>"]).to(device)
         # Generate padding mask
-        src_pad_mask = (obs == self.vocab["<pad>"])
+        src_pad_mask = (obs == self.vocab["<pad>"]).to(device)
         obs = obs.permute(1, 0)
-        src_mask = self.model.generate_square_subsequent_mask(len(obs))
+        src_mask = self.model.generate_square_subsequent_mask(len(obs)).to(device)
         embeddings = self.model(obs, src_mask, src_pad_mask)
 
         # Mean pool while taking into account mask
@@ -1053,8 +1055,8 @@ class MiniWobEmbedder(Embedder):
         question_embedding = self.question_embedder(question).unsqueeze(1)
         # dom_embedding = self.question_embedder(dom).unsqueeze(1)
         screenshot_embedding = self.screenshot_embedder(screenshot)
-        extra_emb1 = self.extra_embedder(torch.tensor([[0]]))
-        extra_emb2 = self.extra_embedder(torch.tensor([[1]]))
+        extra_emb1 = self.extra_embedder(torch.tensor([[0]]).to(device))
+        extra_emb2 = self.extra_embedder(torch.tensor([[1]]).to(device))
         extra_emb1 = torch.repeat_interleave(extra_emb1, B, dim=0)
         extra_emb2 = torch.repeat_interleave(extra_emb2, B, dim=0)
         multi_embedding = torch.cat([

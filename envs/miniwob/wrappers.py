@@ -133,7 +133,7 @@ class InboxDOMWrapper(gym.Wrapper):
 class InboxQAWrapper(gym.Wrapper):
     """Wrapper that adds a screenshot to the info dict returned by step()."""
 
-    QUESTION_TYPES = 5
+    QUESTION_TYPES = 6
 
     def __init__(self, env, env_ids):
         super().__init__(env)
@@ -191,21 +191,23 @@ class InboxQAWrapper(gym.Wrapper):
         questions = []
         for instance in self._env.instances:
             # Hacky way to get the emails from the JS code
-            emails = instance.driver.execute_script("return jQuery._data( document.getElementsByClassName(\"email-thread\")[0], \"events\" ).click[0].data.emails")
+            emails = instance.driver.execute_script("return all_emails")
+            font_idx = instance.driver.execute_script("return fontSizeIdx")
+            font_size = instance.driver.execute_script("return fontSize")
             np.random.seed(self._env_ids[instance.index])
-            question = self._generate_question(emails)
+            question = self._generate_question(emails, font_idx, font_size)
             questions.append(question)
         return questions
     
     def set_qa_env_ids(self, env_ids):
         self._env_ids = env_ids
 
-    def _generate_question(self, emails):
+    def _generate_question(self, emails, font_idx, font_size):
         """Generates a question about the current state of the environment."""
         is_true = np.random.randint(2)
 
         # question_type = np.random.randint(self.QUESTION_TYPES)
-        question_type = 0
+        question_type = 5
         
         names = [email['name'] for email in emails]
         if question_type == 0:
@@ -266,8 +268,21 @@ class InboxQAWrapper(gym.Wrapper):
             question = f"Is the {'most' if email_idx == 0 else '2nd' if email_idx == 1 else '3rd' if email_idx == 2 else 'least' if email_idx + 1 == len(emails) else f'{email_idx+1}th'} recent email from {name}?"
         elif question_type == 4:
             # Generate prompt for "Do I have X emails in my inbox?"
-            n = len(emails) if is_true else np.random.randint(4, 12 + 1)
-            question = f"Do I have {n} emails in my inbox?"
+            n = None
+            if is_true:
+                n = len(emails)
+            else:
+                n = np.random.randint(4, 12 + 1)
+                while n == len(emails):
+                    n = np.random.randint(4, 12 + 1)
+            #question = f"Do I have {n} emails in my inbox?"
+            question = f"{n}"
+        elif question_type == 5:
+            if not is_true:
+                all_sizes = ['small', 'medium', 'large']
+                all_sizes.remove(font_size)
+                font_size = np.random.choice(all_sizes)
+            question = f"Is the {'1st' if font_idx == 0 else '2nd' if font_idx == 1 else '3rd' if font_idx == 2 else f'{font_idx+1}th'} email body {font_size}?"
         return question, is_true
 
 
@@ -288,8 +303,8 @@ class RestrictedActionWrapper(gym.ActionWrapper):
 
     def __init__(self, env):
         super().__init__(env)
-        # self._action_space = gym.spaces.Discrete(len(self.CLICK_LOCATIONS) + 2)
-        self._action_space = gym.spaces.Discrete(2)
+        self._action_space = gym.spaces.Discrete(len(self.CLICK_LOCATIONS) + 2)
+        # self._action_space = gym.spaces.Discrete(2)
 
     def _convert_action(self, action):
         action = int(action)
@@ -305,10 +320,10 @@ class RestrictedActionWrapper(gym.ActionWrapper):
                 TASK_HEIGHT_OFFSET + self.SCROLL_LOCATION[0], 
                 0, -self.SCROLL_AMOUNT)
         else:
-            """miniwob_action = create_coord_click_action(
+            miniwob_action = create_coord_click_action(
                 TASK_WIDTH_OFFSET + self.CLICK_LOCATIONS[action-2][1], 
-                TASK_HEIGHT_OFFSET + self.CLICK_LOCATIONS[action-2][0])"""
-            raise ValueError("Invalid action (most be 0 or 1)")
+                TASK_HEIGHT_OFFSET + self.CLICK_LOCATIONS[action-2][0])
+            # raise ValueError("Invalid action (most be 0 or 1)")
         return miniwob_action
 
     def action(self, actions):

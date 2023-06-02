@@ -159,8 +159,6 @@ def _run_episode(env, policy, experience_observers=None, test=False,
             actions, next_hidden_state = policy.act(
                     state, hidden_state if hidden_state is not None else [None] * NUM_INSTANCES, test=test)
             if not exploitation:
-                actions = [0 for _ in range(NUM_INSTANCES)]
-            if not exploitation:
                 next_hidden_state = [(h.reshape((1, *h.shape)), c.reshape(1, *c.shape)) for h, c in zip(next_hidden_state[0], next_hidden_state[1])]
             action_computation_time += time.time() - action_comp_time_start
         emv_comp_time_start = time.time()
@@ -377,7 +375,7 @@ def main():
             test_exploration_lengths = []
             trajectory_embedder.use_ids(False)
             clear_buffers()
-            for test_index in tqdm.tqdm(range(16)):
+            for test_index in tqdm.tqdm(range(480)):
                 exploration_env = create_env(test_index // NUM_INSTANCES, test=True)
                 exploration_episode, exploration_render = run_episode(
                         env_class.instruction_wrapper()(
@@ -451,7 +449,7 @@ def main():
             os.makedirs(visualize_dir, exist_ok=True)
             clear_buffers()
             train_no_eps_rewards = []
-            for train_index in tqdm.tqdm(range(16)):
+            for train_index in tqdm.tqdm(range(128)):
                 exploration_env = create_env(train_index // NUM_INSTANCES)
                 # Test flags here only refer to making agent act with test flag and
                 # not test split environments

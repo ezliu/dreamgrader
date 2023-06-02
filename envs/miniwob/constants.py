@@ -14,6 +14,12 @@ QUESTIONS = [
   f"Is the {'most' if email_idx == 0 else '2nd' if email_idx == 1 else '3rd' if email_idx == 2 else 'least' if email_idx + 1 == 12 else f'{email_idx+1}th'} recent email from name?" for email_idx in range(12)
 ] + [
   f"Do I have {n} emails in my inbox?" for n in range(4, 12 + 1)
+] + [
+  f"Is the {'1st' if email_idx == 0 else '2nd' if email_idx == 1 else '3rd' if email_idx == 2 else f'{email_idx+1}th'} email small?" for email_idx in range(10)
+] + [
+  f"Is the {'1st' if email_idx == 0 else '2nd' if email_idx == 1 else '3rd' if email_idx == 2 else f'{email_idx+1}th'} email medium?" for email_idx in range(10)
+] + [
+  f"Is the {'1st' if email_idx == 0 else '2nd' if email_idx == 1 else '3rd' if email_idx == 2 else f'{email_idx+1}th'} email large?" for email_idx in range(10)
 ]
 
 # PEOPLE_NAMES = ['Adore', 'Adrian', 'Aeriel', 'Ailina', 'Aleda', 'Amargo', 'Angelika', 'Anna', 'Austin', 'Barrie', 'Bird', 'Bride', 'Carline', 'Cathe', 'Celestia', 'Christine', 'Cindee', 'Consuelo', 'Corrina', 'Corry', 'Cthrine', 'Daryn', 'Desdemona', 'Diane-Marie', 'Diann', 'Dina', 'Dolly', 'Doralyn', 'Doralynne', 'Doris', 'Dorothy', 'Edy', 'Ellene', 'Elwira', 'Emmye', 'Florette', 'Frannie', 'Freddy', 'Gail', 'Gianina', 'Giustina', 'Hazel', 'Hedvig', 'Ingaberg', 'Izabel', 'Jaine', 'Jasmin', 'Jerrie', 'Jessica', 'Joby', 'Josie', 'Joy', 'Juieta', 'Kassandra', 'Krystle', 'Kylynn', 'Lolita', 'Lu', 'Lydie', 'Lynda', 'Marline', 'Marlo', 'Marnia', 'Merilyn', 'Mirella', 'Misha', 'Mozelle', 'Myrilla', 'Nana', 'Nell', 'Nicola', 'Noella', 'Nona', 'Pauly', 'Phillis', 'Pietra', 'Polly', 'Quintilla', 'Raynell', 'Reyna', 'Riane', 'Rosene', 'Ruby', 'Sacha', 'Salomi', 'Selia', 'Sephira', 'Shelli', 'Stacia', 'Starlin', 'Suzanne', 'Tabbatha', 'Tally', 'Tania', 'Tiff', 'Tony', 'Twila', 'Umeko', 'Verile', 'Yalonda']

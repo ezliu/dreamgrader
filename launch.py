@@ -63,7 +63,7 @@ with open(TMP, "w") as f:
         exp_name=f"{args.name}",
         seed=args.seed))
 
-cmd = "sbatch --account=iris -p {partition} --time 300:00:00 --job-name=dream-miniwob-{exp_name} --exclude=iris-hp-z8,iris5,iris6 --output=sbatch/{exp_name}.txt {tmp}".format(partition=partition, exp_name=args.name, tmp=TMP)
+cmd = "sbatch --account=iris -p {partition} --time 300:00:00 --job-name=dream-miniwob-{exp_name} --exclude=iris4 --output=sbatch/{exp_name}.txt {tmp}".format(partition=partition, exp_name=args.name, tmp=TMP)
 
 subprocess.run(cmd, check=True, shell=True)
 time.sleep(2)
