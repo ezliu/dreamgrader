@@ -114,7 +114,8 @@ class TransitionEmbedder(Embedder):
     def from_config(cls, config, env):
         state_embedder = get_state_embedder(env)(
                 env.observation_space["observation"],
-                config.get("experience_embedder").get("state_embed_dim"))
+                config.get("experience_embedder").get("state_embed_dim"),
+                config.get("use_dom"))
         action_embedder = FixedVocabEmbedder(
                 env.action_space.n,
                 config.get("experience_embedder").get("action_embedder").get("embed_dim"))
@@ -362,7 +363,8 @@ class InstructionPolicyEmbedder(Embedder):
         """
         obs_embedder = get_state_embedder(env)(
                 env.observation_space["observation"],
-                config.get("obs_embedder").get("embed_dim"))
+                config.get("obs_embedder").get("embed_dim"),
+                config.get("use_dom"))
         # Use SimpleGridEmbeder since these are just discrete vars
         instruction_embedder = SimpleGridStateEmbedder(
                 env.observation_space["instructions"],
@@ -376,7 +378,8 @@ class InstructionPolicyEmbedder(Embedder):
         transition_config = config.get("transition_embedder")
         state_embedder = get_state_embedder(env)(
                 env.observation_space["observation"],
-                transition_config.get("state_embed_dim"))
+                transition_config.get("state_embed_dim"),
+                config.get("use_dom"))
         # This needs to cover embedding of the exploration time env...
         action_embedder = FixedVocabEmbedder(
                 env.unwrapped.action_space.n, transition_config.get("action_embed_dim"))
@@ -478,7 +481,8 @@ class RecurrentAndTaskIDEmbedder(Embedder):
         state_embed_config = config.get("state_embedder")
         state_embedder = get_state_embedder(env)(
             env.observation_space["observation"],
-            state_embed_config.get("embed_dim"))
+            state_embed_config.get("embed_dim"),
+            config.get("use_dom"))
         instruction_embedder = SimpleGridStateEmbedder(
             env.observation_space["instructions"],
             state_embed_config.get("embed_dim"))
@@ -653,7 +657,8 @@ class VariBADEmbedder(Embedder):
         state_embed_config = config.get("state_embedder")
         state_embedder = get_state_embedder(env)(
             env.observation_space["observation"],
-            state_embed_config.get("embed_dim"))
+            state_embed_config.get("embed_dim"),
+            config.get("use_dom"))
         instruction_embedder = SimpleGridStateEmbedder(
             env.observation_space["instructions"],
             state_embed_config.get("embed_dim"))
@@ -737,7 +742,8 @@ class RecurrentStateEmbedder(Embedder):
         experience_embed_config = config.get("experience_embedder")
         state_embedder = get_state_embedder(env)(
                 env.observation_space["observation"],
-                experience_embed_config.get("state_embed_dim"))
+                experience_embed_config.get("state_embed_dim"),
+                config.get("use_dom"))
         action_embedder = FixedVocabEmbedder(
                 env.action_space.n + 1, experience_embed_config.get("action_embed_dim"))
         instruction_embedder = None
@@ -921,6 +927,59 @@ class Residual(nn.Module):  #@save
         return F.relu(Y)
 
 
+class MiniWobQuestionEmbedderV2(Embedder):
+    d_hid = 128  # dimension of the feedforward network model in nn.TransformerEncoder
+    nlayers = 1  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
+    nhead = 4  # number of heads in nn.MultiheadAttention
+    dropout = 0.2  # dropout probability
+    transf_embed_dim = 512
+    d_vocab = 64
+    
+    def __init__(self, observation_space, embed_dim=256, use_dom=False):
+        super().__init__(embed_dim)
+
+        self.tokenizer = get_tokenizer('basic_english')
+        phrases = QUESTIONS + [" ".join(LOREM_WORDS), " ".join(PEOPLE_NAMES), "."]
+        self.vocab = build_vocab_from_iterator(map(self.tokenizer, phrases), specials=["<unk>", "<pad>", "<bos>"])
+        if use_dom:
+            for t in HTML_TOKENS:
+                if t not in self.vocab:
+                    self.vocab.append_token(t)
+               
+        self.vocab.set_default_index(self.vocab["<unk>"])
+        self.embed = nn.Embedding(len(self.vocab), self.d_vocab)
+        self.query = nn.Parameter(torch.randn((1, embed_dim)))
+        self.encoder = nn.MultiheadAttention(
+            embed_dim, 
+            self.nhead,
+            dropout=self.dropout,
+            kdim=self.d_vocab, 
+            vdim=self.d_vocab,
+            batch_first=False)
+
+    def forward(self, obs):
+        """Expects shape (batch_size, 1)"""
+        obs = [torch.tensor([self.vocab["<bos>"]] + self.vocab(self.tokenizer(item))) for item in obs]
+        # Pad to max length
+        obs = nn.utils.rnn.pad_sequence(obs, batch_first=True, padding_value=self.vocab["<pad>"]).to(device)
+        # Generate padding mask
+        src_pad_mask = (obs == self.vocab["<pad>"]).to(device)
+        obs = obs.permute(1, 0)
+        src_mask = self.generate_square_subsequent_mask(len(obs)).to(device)
+
+        query = torch.repeat_interleave(self.query.unsqueeze(0), obs.shape[1], dim=1)
+        embeddings = self.embed(obs)
+        #embeddings = self.encoder(query, embeddings, embeddings, key_padding_mask=src_pad_mask, attn_mask=src_mask[0,:].unsqueeze(0))[0]
+        embeddings = self.encoder(query, embeddings, embeddings)[0]
+
+        return embeddings.reshape(obs.shape[1], -1)
+
+    @staticmethod
+    def generate_square_subsequent_mask(sz: int) -> Tensor:
+        """Generates an upper-triangular matrix of -inf, with zeros on diag."""
+        return torch.triu(torch.ones(sz, sz) * float('-inf'), diagonal=1)
+
+
 class MiniWobQuestionEmbedder(Embedder):
     d_hid = 128  # dimension of the feedforward network model in nn.TransformerEncoder
     nlayers = 1  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
@@ -928,15 +987,16 @@ class MiniWobQuestionEmbedder(Embedder):
     dropout = 0.2  # dropout probability
     transf_embed_dim = 64
     
-    def __init__(self, observation_space, embed_dim=256):
+    def __init__(self, observation_space, embed_dim=256, use_dom=False):
         super().__init__(embed_dim)
 
         self.tokenizer = get_tokenizer('basic_english')
         phrases = QUESTIONS + [" ".join(LOREM_WORDS), " ".join(PEOPLE_NAMES), "."]
         self.vocab = build_vocab_from_iterator(map(self.tokenizer, phrases), specials=["<unk>", "<pad>", "<bos>"])
-        # for t in HTML_TOKENS:
-        #    if t not in self.vocab:
-        #       self.vocab.append_token(t)
+        if use_dom:
+            for t in HTML_TOKENS:
+                if t not in self.vocab:
+                    self.vocab.append_token(t)
                
         self.vocab.set_default_index(self.vocab["<unk>"])
         self.model = TransformerEmbedder(len(self.vocab),self.transf_embed_dim, self.nhead, self.d_hid, self.nlayers, self.dropout)
@@ -1028,15 +1088,16 @@ class MiniWobEmbedder(Embedder):
     nhead = 4  # number of heads in nn.MultiheadAttention
     dropout = 0.2  # dropout probability
     
-    def __init__(self, observation_space, embed_dim=256):
+    def __init__(self, observation_space, embed_dim=256, use_dom=False):
         super().__init__(embed_dim)
 
-        self.question_embedder = MiniWobQuestionEmbedder(None, embed_dim=embed_dim)
+        self.question_embedder = MiniWobQuestionEmbedderV2(None, embed_dim=embed_dim, use_dom=use_dom)
         self.screenshot_embedder = MiniWobScreenshotEmbedder(None, embed_dim=embed_dim)
         self.extra_embedder = nn.Embedding(2, embed_dim)
         encoder_layers = nn.TransformerEncoderLayer(embed_dim, self.nhead, embed_dim, self.dropout)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, self.nlayers)
         self.linear = nn.Linear(3 * embed_dim, embed_dim)
+        self.use_dom = use_dom
 
     def forward(self, obs):
         if isinstance(obs, list):
@@ -1053,19 +1114,24 @@ class MiniWobEmbedder(Embedder):
         B = len(question)
 
         question_embedding = self.question_embedder(question).unsqueeze(1)
-        # dom_embedding = self.question_embedder(dom).unsqueeze(1)
+        dom_embedding = None if not self.use_dom else self.question_embedder(dom).unsqueeze(1)
         screenshot_embedding = self.screenshot_embedder(screenshot)
         extra_emb1 = self.extra_embedder(torch.tensor([[0]]).to(device))
         extra_emb2 = self.extra_embedder(torch.tensor([[1]]).to(device))
         extra_emb1 = torch.repeat_interleave(extra_emb1, B, dim=0)
         extra_emb2 = torch.repeat_interleave(extra_emb2, B, dim=0)
-        multi_embedding = torch.cat([
-            question_embedding,
-            # dom_embedding,
-            screenshot_embedding,
-            extra_emb1,
-            extra_emb2
-        ], dim=1)
+        try:
+            multi_embedding = torch.cat([
+                question_embedding,
+                screenshot_embedding,
+                extra_emb1,
+                extra_emb2
+            ] + ([dom_embedding] if self.use_dom else []), dim=1)
+        except Exception as e:
+            print(f"Question: {question_embedding.shape}")
+            print(f"Screenshot: {screenshot_embedding.shape}")
+            print(f"Extra: {extra_emb1.shape}")
+            raise e
         multi_embedding = multi_embedding.permute(1, 0, 2)
         multi_embedding = self.transformer_encoder(multi_embedding)
         multi_embedding = multi_embedding.permute(1, 0, 2)
@@ -1074,9 +1140,9 @@ class MiniWobEmbedder(Embedder):
             multi_embedding[:,-2,:],
             multi_embedding[:,-1,:]
         ], dim=1).reshape(B, -1)
-        res = F.relu(self.linear(res))
+        # print(res.shape)
+        res = self.linear(res)
         return res
-
 
 
 class SimpleGridStateEmbedder(Embedder):
