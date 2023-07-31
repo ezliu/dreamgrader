@@ -927,35 +927,23 @@ class Residual(nn.Module):  #@save
         return F.relu(Y)
 
 
-class MiniWobQuestionEmbedderV2(Embedder):
-    d_hid = 128  # dimension of the feedforward network model in nn.TransformerEncoder
-    nlayers = 1  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
-    nhead = 4  # number of heads in nn.MultiheadAttention
-    dropout = 0.2  # dropout probability
-    transf_embed_dim = 512
-    d_vocab = 64
+class MiniWobLanguageEmbedder(Embedder):
+    d_vocab = 128
     
-    def __init__(self, observation_space, embed_dim=256, use_dom=False):
+    def __init__(self, observation_space, embed_dim=256):
         super().__init__(embed_dim)
 
         self.tokenizer = get_tokenizer('basic_english')
         phrases = QUESTIONS + [" ".join(LOREM_WORDS), " ".join(PEOPLE_NAMES), "."]
         self.vocab = build_vocab_from_iterator(map(self.tokenizer, phrases), specials=["<unk>", "<pad>", "<bos>"])
-        if use_dom:
-            for t in HTML_TOKENS:
-                if t not in self.vocab:
-                    self.vocab.append_token(t)
+        for t in HTML_TOKENS:
+            if t not in self.vocab:
+                self.vocab.append_token(t)
                
         self.vocab.set_default_index(self.vocab["<unk>"])
-        self.embed = nn.Embedding(len(self.vocab), self.d_vocab)
-        self.query = nn.Parameter(torch.randn((1, embed_dim)))
-        self.encoder = nn.MultiheadAttention(
-            embed_dim, 
-            self.nhead,
-            dropout=self.dropout,
-            kdim=self.d_vocab, 
-            vdim=self.d_vocab,
-            batch_first=False)
+        self.embed = nn.Embedding(len(self.vocab), self.d_vocab).cuda()
+        print(self.vocab["<unk>"])
+        
 
     def forward(self, obs):
         """Expects shape (batch_size, 1)"""
@@ -965,22 +953,69 @@ class MiniWobQuestionEmbedderV2(Embedder):
         # Generate padding mask
         src_pad_mask = (obs == self.vocab["<pad>"]).to(device)
         obs = obs.permute(1, 0)
-        src_mask = self.generate_square_subsequent_mask(len(obs)).to(device)
-
-        query = torch.repeat_interleave(self.query.unsqueeze(0), obs.shape[1], dim=1)
         embeddings = self.embed(obs)
-        #embeddings = self.encoder(query, embeddings, embeddings, key_padding_mask=src_pad_mask, attn_mask=src_mask[0,:].unsqueeze(0))[0]
-        embeddings = self.encoder(query, embeddings, embeddings)[0]
-
-        return embeddings.reshape(obs.shape[1], -1)
-
-    @staticmethod
-    def generate_square_subsequent_mask(sz: int) -> Tensor:
-        """Generates an upper-triangular matrix of -inf, with zeros on diag."""
-        return torch.triu(torch.ones(sz, sz) * float('-inf'), diagonal=1)
+        return embeddings, src_pad_mask
 
 
-class MiniWobQuestionEmbedder(Embedder):
+class MiniWobLanguageTransformer(Embedder):
+    nhead = 4  # number of heads in nn.MultiheadAttention
+    dropout_prob = 0.1  # dropout probability
+    d_vocab = 128
+
+    def __init__(self, observation_space, embed_dim=256):
+        super().__init__(embed_dim)
+
+        self.query = nn.Parameter(torch.randn((1, embed_dim)))
+        self.pos_encoding = PositionalEncoding(self.d_vocab)
+        self.encoder = nn.MultiheadAttention(
+            embed_dim, 
+            self.nhead,
+            dropout=self.dropout_prob,
+            kdim=self.d_vocab, 
+            vdim=self.d_vocab,
+            batch_first=False)
+        self.norm1 = nn.LayerNorm(self.d_vocab, eps=1e-6)
+        self.norm2 = nn.LayerNorm(embed_dim, eps=1e-6)
+        self.norm3 = nn.LayerNorm(embed_dim, eps=1e-6)
+        self.fc1 = nn.Linear(embed_dim, embed_dim)
+        self.dropout = nn.Dropout(self.dropout_prob)
+        
+    def forward(self, obs, query=None, pad_mask=None):
+        if query is None:
+            query = torch.repeat_interleave(self.query.unsqueeze(0), obs.shape[1], dim=1)
+        else:
+            # expected input to be (batch, 1, embed)
+            query = query.permute(1, 0, 2)
+        # obs = self.pos_encoding(obs)
+        obs = self.norm1(obs)
+        query = self.norm3(query)
+        embeddings = query + self.encoder(query, obs, obs, key_padding_mask=pad_mask)[0]
+        embeddings = embeddings.reshape(obs.shape[1], -1)
+        embeddings = embeddings + self.dropout(self.fc1(self.norm2(embeddings)))
+        return embeddings
+
+
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model: int, max_len: int = 5000):
+        super().__init__()
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Args:
+            x: Tensor, shape [seq_len, batch_size, embedding_dim]
+        """
+        x = x + self.pe[:x.size(0)]
+        return x
+
+"""class MiniWobQuestionEmbedder(Embedder):
     d_hid = 128  # dimension of the feedforward network model in nn.TransformerEncoder
     nlayers = 1  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
     nhead = 4  # number of heads in nn.MultiheadAttention
@@ -1003,7 +1038,7 @@ class MiniWobQuestionEmbedder(Embedder):
         self.output_proj = nn.Linear(self.transf_embed_dim, embed_dim)
 
     def forward(self, obs):
-        """Expects shape (batch_size, 1)"""
+        # Expects shape (batch_size, 1)
         obs = [torch.tensor([self.vocab["<bos>"]] + self.vocab(self.tokenizer(item))) for item in obs]
         # Pad to max length
         obs = nn.utils.rnn.pad_sequence(obs, batch_first=True, padding_value=self.vocab["<pad>"]).to(device)
@@ -1018,11 +1053,11 @@ class MiniWobQuestionEmbedder(Embedder):
         num_tokens = attn_mask.sum(axis=-1).unsqueeze(-1)
         sum = (embeddings.permute(1, 0, 2) * attn_mask.unsqueeze(-1)).sum(axis=1)
         pooled_embedding = sum / num_tokens
-        return F.relu(self.output_proj(pooled_embedding))
+        return F.relu(self.output_proj(pooled_embedding))"""
 
 
-class TransformerEmbedder(nn.Module):
-    """Adapted from https://pytorch.org/tutorials/beginner/transformer_tutorial.html"""
+"""class TransformerEmbedder(nn.Module):
+    # Adapted from https://pytorch.org/tutorials/beginner/transformer_tutorial.html
     def __init__(self, ntoken: int, d_model: int, nhead: int, d_hid: int,
                  nlayers: int, dropout: float = 0.5):
         super().__init__()
@@ -1040,14 +1075,6 @@ class TransformerEmbedder(nn.Module):
         self.encoder.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, src: Tensor, src_mask: Tensor, src_pad_mask: Tensor = None) -> Tensor:
-        """
-        Args:
-            src: Tensor, shape [seq_len, batch_size]
-            src_mask: Tensor, shape [seq_len, seq_len]
-
-        Returns:
-            output Tensor of shape [seq_len, batch_size, ntoken]
-        """
         src = self.encoder(src) * math.sqrt(self.d_model)
         src = self.pos_encoder(src)
         output = self.transformer_encoder(src, mask=src_mask, src_key_padding_mask=src_pad_mask)
@@ -1055,48 +1082,29 @@ class TransformerEmbedder(nn.Module):
 
     @staticmethod
     def generate_square_subsequent_mask(sz: int) -> Tensor:
-        """Generates an upper-triangular matrix of -inf, with zeros on diag."""
-        return torch.triu(torch.ones(sz, sz) * float('-inf'), diagonal=1)
-
-
-class PositionalEncoding(nn.Module):
-
-    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
-        super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
-
-        position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
-        pe = torch.zeros(max_len, 1, d_model)
-        pe[:, 0, 0::2] = torch.sin(position * div_term)
-        pe[:, 0, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe)
-
-    def forward(self, x: Tensor) -> Tensor:
-        """
-        Args:
-            x: Tensor, shape [seq_len, batch_size, embedding_dim]
-        """
-        x = x + self.pe[:x.size(0)]
-        return self.dropout(x)
+        # Generates an upper-triangular matrix of -inf, with zeros on diag.
+        return torch.triu(torch.ones(sz, sz) * float('-inf'), diagonal=1)"""
 
 
 class MiniWobEmbedder(Embedder):
     # nlayers = 8
     # nhead = 8
-    nlayers = 6  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
+    nlayers = 2 #6  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
     nhead = 4  # number of heads in nn.MultiheadAttention
-    dropout = 0.2  # dropout probability
+    dropout = 0.1  # dropout probability
     
     def __init__(self, observation_space, embed_dim=256, use_dom=False):
         super().__init__(embed_dim)
 
-        self.question_embedder = MiniWobQuestionEmbedderV2(None, embed_dim=embed_dim, use_dom=use_dom)
+        self.language_embedder = MiniWobLanguageEmbedder(None, embed_dim=embed_dim)
+        self.question_embedder = MiniWobLanguageTransformer(None, embed_dim=embed_dim)
+        self.dom_embedder = MiniWobLanguageTransformer(None, embed_dim=embed_dim)
         self.screenshot_embedder = MiniWobScreenshotEmbedder(None, embed_dim=embed_dim)
-        self.extra_embedder = nn.Embedding(2, embed_dim)
+        self.extra_embedding1 = nn.Parameter(torch.randn((1, embed_dim)))
+        self.extra_embedding2 = nn.Parameter(torch.randn((1, embed_dim)))
         encoder_layers = nn.TransformerEncoderLayer(embed_dim, self.nhead, embed_dim, self.dropout)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, self.nlayers)
-        self.linear = nn.Linear(3 * embed_dim, embed_dim)
+        self.linear = nn.Linear((3 if use_dom else 2) * embed_dim, embed_dim)
         self.use_dom = use_dom
 
     def forward(self, obs):
@@ -1113,34 +1121,27 @@ class MiniWobEmbedder(Embedder):
         assert len(question) == screenshot.shape[0], "Batch size mismatch"
         B = len(question)
 
-        question_embedding = self.question_embedder(question).unsqueeze(1)
-        dom_embedding = None if not self.use_dom else self.question_embedder(dom).unsqueeze(1)
+        question_embedding, question_pad_mask = self.language_embedder(question)
+        question_embedding = self.question_embedder(question_embedding, pad_mask=question_pad_mask).unsqueeze(1)
+        dom_embedding = None
+        if self.use_dom:
+            dom_token_embedding, dom_pad_mask = self.language_embedder(dom)
+            dom_embedding = self.dom_embedder(dom_token_embedding, query=question_embedding, pad_mask=dom_pad_mask).unsqueeze(1)
         screenshot_embedding = self.screenshot_embedder(screenshot)
-        extra_emb1 = self.extra_embedder(torch.tensor([[0]]).to(device))
-        extra_emb2 = self.extra_embedder(torch.tensor([[1]]).to(device))
-        extra_emb1 = torch.repeat_interleave(extra_emb1, B, dim=0)
-        extra_emb2 = torch.repeat_interleave(extra_emb2, B, dim=0)
-        try:
-            multi_embedding = torch.cat([
-                question_embedding,
-                screenshot_embedding,
-                extra_emb1,
-                extra_emb2
-            ] + ([dom_embedding] if self.use_dom else []), dim=1)
-        except Exception as e:
-            print(f"Question: {question_embedding.shape}")
-            print(f"Screenshot: {screenshot_embedding.shape}")
-            print(f"Extra: {extra_emb1.shape}")
-            raise e
+        extra_emb1 = torch.repeat_interleave(self.extra_embedding1, B, dim=0).unsqueeze(1)
+        extra_emb2 = torch.repeat_interleave(self.extra_embedding2, B, dim=0).unsqueeze(1)
+        multi_embedding = torch.cat([
+            question_embedding,
+            screenshot_embedding,
+        ] + ([dom_embedding] if self.use_dom else [])
+        + [extra_emb1, extra_emb2], dim=1)
         multi_embedding = multi_embedding.permute(1, 0, 2)
         multi_embedding = self.transformer_encoder(multi_embedding)
         multi_embedding = multi_embedding.permute(1, 0, 2)
-        res = torch.concat([
-            multi_embedding[:,:-2,:].mean(dim=1),
+        res = torch.concat(([dom_embedding.squeeze(1)] if self.use_dom else []) + [
             multi_embedding[:,-2,:],
-            multi_embedding[:,-1,:]
+            multi_embedding[:,-1,:],
         ], dim=1).reshape(B, -1)
-        # print(res.shape)
         res = self.linear(res)
         return res
 

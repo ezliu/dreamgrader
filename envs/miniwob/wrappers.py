@@ -127,7 +127,10 @@ class InboxDOMWrapper(gym.Wrapper):
     
     def get_dom(self, instance_idx):
         dom = self._env.instances[instance_idx].driver.execute_script("return core.getDOMInfo();")
-        return self.convert_dom_to_text(dom)
+        dom = self.convert_dom_to_text(dom)
+        dom = dom.replace('< ', '<')
+        dom = dom.replace(' >', '>')
+        return dom
 
 
 class InboxQAWrapper(gym.Wrapper):
@@ -140,6 +143,7 @@ class InboxQAWrapper(gym.Wrapper):
         self._env = env
         self._env_ids = env_ids
         self.current_question = None
+        self.random_state = None
 
     def step(self, action):
         obs, reward, done, _, info = self._env.step(action)
@@ -155,19 +159,18 @@ class InboxQAWrapper(gym.Wrapper):
             o['question'] = self.current_question[i][0]
         return obs, info
 
-    @staticmethod
-    def _generate_words(minLen: int, maxLen: int, exclude=None) -> str:
-        n = np.random.randint(minLen, maxLen+1)
+    def _generate_words(self, minLen: int, maxLen: int, exclude=None) -> str:
+        n = self.random_state.randint(minLen, maxLen+1)
         words = []
         first_word = True
         while len(words) < n:
-            w = np.random.choice(LOREM_WORDS)
+            w = self.random_state.choice(LOREM_WORDS)
             if exclude is not None and w in exclude:
                 continue
             if first_word:
                 w = w.capitalize()
                 first_word = False
-            if np.random.rand() < 0.2 and len(words) + 1 < n:
+            if self.random_state.rand() < 0.2 and len(words) + 1 < n:
                 w += "."
                 first_word = True
             elif len(words) + 1 == n:
@@ -175,16 +178,14 @@ class InboxQAWrapper(gym.Wrapper):
             words.append(w)
         return " ".join(words) + "."
 
-    @staticmethod
-    def _generate_name(exclude: List[str] = None) -> str:
-        name = np.random.choice(PEOPLE_NAMES)
+    def _generate_name(self, exclude: List[str] = None) -> str:
+        name = self.random_state.choice(PEOPLE_NAMES)
         while exclude is not None and name in exclude:
-            name = np.random.choice(PEOPLE_NAMES)
+            name = self.random_state.choice(PEOPLE_NAMES)
         return name
 
-    @staticmethod
-    def _pick_name(emails: List[Dict[str, str]]) -> str:
-        return emails[np.random.randint(len(emails))]['name']
+    def _pick_name(self, emails: List[Dict[str, str]]) -> str:
+        return emails[self.random_state.randint(len(emails))]['name']
 
     def _generate_questions(self):
         """Generates a question about the current state of the environment."""
@@ -194,7 +195,7 @@ class InboxQAWrapper(gym.Wrapper):
             emails = instance.driver.execute_script("return all_emails")
             font_idx = instance.driver.execute_script("return fontSizeIdx")
             font_size = instance.driver.execute_script("return fontSize")
-            np.random.seed(self._env_ids[instance.index])
+            self.random_state = np.random.RandomState(self._env_ids[instance.index])
             question = self._generate_question(emails, font_idx, font_size)
             questions.append(question)
         return questions
@@ -204,10 +205,10 @@ class InboxQAWrapper(gym.Wrapper):
 
     def _generate_question(self, emails, font_idx, font_size):
         """Generates a question about the current state of the environment."""
-        is_true = np.random.randint(2)
+        is_true = self.random_state.randint(2)
 
-        # question_type = np.random.randint(self.QUESTION_TYPES)
-        question_type = 5
+        # question_type = self.random_state.randint(self.QUESTION_TYPES)
+        question_type = 2
         
         names = [email['name'] for email in emails]
         if question_type == 0:
@@ -218,12 +219,12 @@ class InboxQAWrapper(gym.Wrapper):
         elif question_type == 1:
             # Generate prompt for "Is there an email from X with a subject line about Y?"
             if is_true:
-                email_idx = np.random.randint(len(emails))
+                email_idx = self.random_state.randint(len(emails))
                 name = emails[email_idx]['name']
                 subject = emails[email_idx]['subject']
             else:
-                false_case = np.random.randint(3)
-                email_idx = np.random.randint(len(emails))
+                false_case = self.random_state.randint(3)
+                email_idx = self.random_state.randint(len(emails))
                 if false_case == 0:
                     name = emails[email_idx]['name']
                     subject = self._generate_words(1, 3, exclude=emails[email_idx]['subject'])
@@ -236,31 +237,34 @@ class InboxQAWrapper(gym.Wrapper):
             question = f"Is there an email from {name} with a subject line about '{subject}'?"
         elif question_type == 2:
             if is_true:
-                email_idx = np.random.randint(len(emails))
+                email_idx = self.random_state.randint(len(emails))
                 name = emails[email_idx]['name']
                 body = emails[email_idx]['body']
             else:
-                false_case = np.random.randint(3)
-                email_idx = np.random.randint(len(emails))
+                false_case = self.random_state.randint(3)
+                email_idx = self.random_state.randint(len(emails))
                 if false_case == 0:
+                    # Case name exists but content doesn't
                     name = emails[email_idx]['name']
                     emails_for_name = [e for e in emails if e['name'] == name]
                     bodies = [w.lower().replace(".", "") for e in emails_for_name for w in e['body'].split()]
                     subjects = [w.lower().replace(".", "") for e in emails_for_name for w in e['subject'].split()]
                     body = self._generate_words(5, 15, exclude=list(set(bodies + subjects)))
                 elif false_case == 1:
+                    # Case name doesn't exist but content does
                     name = self._generate_name(exclude=names)
                     body = emails[email_idx]['body']
                 else:
+                    # Case neither name nor content exists
                     name = self._generate_name(exclude=names)
                     body =self._generate_words(5, 15)
             body = [w.strip().replace(",", "").replace(".", "") for w in body.split()]
-            # state_idx = np.random.randint(max(len(body) - 5, 1))
+            # state_idx = self.random_state.randint(max(len(body) - 5, 1))
             # body_slice = " ".join(body[state_idx:state_idx+5])
             question = f"Is there an email from {name} about {body[4].lower()} ?"
         elif question_type == 3:
             # Generate prompt for "Is the Xth recent email from Y?"
-            email_idx = np.random.randint(len(emails))
+            email_idx = self.random_state.randint(len(emails))
             if is_true:
                 name = emails[email_idx]['name']
             else:
@@ -272,16 +276,16 @@ class InboxQAWrapper(gym.Wrapper):
             if is_true:
                 n = len(emails)
             else:
-                n = np.random.randint(4, 12 + 1)
+                n = self.random_state.randint(4, 10 + 1)
                 while n == len(emails):
-                    n = np.random.randint(4, 12 + 1)
+                    n = self.random_state.randint(4, 10 + 1)
             #question = f"Do I have {n} emails in my inbox?"
-            question = f"{n}"
+            question = f"Do I have {n} emails in my inbox?"
         elif question_type == 5:
             if not is_true:
                 all_sizes = ['small', 'medium', 'large']
                 all_sizes.remove(font_size)
-                font_size = np.random.choice(all_sizes)
+                font_size = self.random_state.choice(all_sizes)
             question = f"Is the {'1st' if font_idx == 0 else '2nd' if font_idx == 1 else '3rd' if font_idx == 2 else f'{font_idx+1}th'} email body {font_size}?"
         return question, is_true
 
@@ -297,7 +301,8 @@ class WarpScreenshot(gym.ObservationWrapper):
 
 
 class RestrictedActionWrapper(gym.ActionWrapper):
-    CLICK_LOCATIONS = [(10, 10), (10, 30), (10, 50), (10, 70), (10, 90), (10, 110), (10, 130), (10, 150), (30, 10), (30, 30), (30, 50), (30, 70), (30, 90), (30, 110), (30, 130), (30, 150), (50, 10), (50, 30), (50, 50), (50, 70), (50, 90), (50, 110), (50, 130), (50, 150), (70, 10), (70, 30), (70, 50), (70, 70), (70, 90), (70, 110), (70, 130), (70, 150), (90, 10), (90, 30), (90, 50), (90, 70), (90, 90), (90, 110), (90, 130), (90, 150), (110, 10), (110, 30), (110, 50), (110, 70), (110, 90), (110, 110), (110, 130), (110, 150), (130, 10), (130, 30), (130, 50), (130, 70), (130, 90), (130, 110), (130, 130), (130, 150)]
+    # CLICK_LOCATIONS = [(10, 10), (10, 30), (10, 50), (10, 70), (10, 90), (10, 110), (10, 130), (10, 150), (30, 10), (30, 30), (30, 50), (30, 70), (30, 90), (30, 110), (30, 130), (30, 150), (50, 10), (50, 30), (50, 50), (50, 70), (50, 90), (50, 110), (50, 130), (50, 150), (70, 10), (70, 30), (70, 50), (70, 70), (70, 90), (70, 110), (70, 130), (70, 150), (90, 10), (90, 30), (90, 50), (90, 70), (90, 90), (90, 110), (90, 130), (90, 150), (110, 10), (110, 30), (110, 50), (110, 70), (110, 90), (110, 110), (110, 130), (110, 150), (130, 10), (130, 30), (130, 50), (130, 70), (130, 90), (130, 110), (130, 130), (130, 150)]
+    CLICK_LOCATIONS = [(10, 10), (10, 50), (10, 90), (10, 130), (50, 10), (50, 50), (50, 90), (50, 130), (90, 10), (90, 50), (90, 90), (90, 130), (130, 10), (130, 50), (130, 90), (130, 130)]
     SCROLL_LOCATION = (TASK_HEIGHT//2, TASK_WIDTH//2)
     SCROLL_AMOUNT = 120
 

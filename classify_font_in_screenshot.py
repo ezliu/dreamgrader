@@ -1,9 +1,11 @@
 import os
 import torch
+import random
+from sophia import SophiaG
 from tqdm import tqdm
 import pandas as pd
 import torch.optim as optim
-from embed import MiniWobEmbedder, MiniWobQuestionEmbedder, MiniWobScreenshotEmbedder
+from embed import MiniWobEmbedder
 from torchvision.io import read_image
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
@@ -14,28 +16,57 @@ from envs.miniwob.inbox import EmailInboxObservation
 torch.set_default_tensor_type(torch.FloatTensor)
 
 class FontInImageDataset(Dataset):
-    def __init__(self, csv_file, root_dir):
-        self.names_frame = pd.read_csv(csv_file)
-        # self.names_frame = self.names_frame[self.names_frame['name'].str.contains('large')]
+    def __init__(self, root_dir, use_dom=False):
+        self.names_frame = pd.read_csv(os.path.join(root_dir, 'inbox_samples.csv'))
+        # self.names_frame = self.names_frame[self.names_frame['name'].str.contains('Nicola')]
+        # self.names_frame = self.names_frame[self.names_frame['name'].str.contains('Lolita') | self.names_frame['name'].str.contains('Giustina') | self.names_frame['name'].str.contains('Ingaberg') | self.names_frame['name'].str.contains('Kassandra') | self.names_frame['name'].str.contains('Nicola') | self.names_frame['name'].str.contains('Celestia') | self.names_frame['name'].str.contains('Mozelle') | self.names_frame['name'].str.contains('Doralyn') | self.names_frame['name'].str.contains('Lu')]
         self.root_dir = root_dir
+        self.use_dom = use_dom
 
     def __len__(self):
-       # return len(self.names_frame)
-       return 50000
+        return len(self.names_frame)
+        # return 1000
 
     def __getitem__(self, idx):
-        img_name = os.path.join(self.root_dir, self.names_frame.iloc[idx, 1])
+        img_name = os.path.join(self.root_dir, 'inboxes', self.names_frame.iloc[idx, 1])
+        dom = ''
+        if self.use_dom:
+            with open(os.path.join(self.root_dir, 'doms', self.names_frame.iloc[idx, 1].split(".")[0] + '.txt')) as f:
+                dom = f.read()
+        dom = dom.replace('< ', '<')
+        dom = dom.replace(' >', '>')
         image = read_image(img_name).permute(1, 2, 0)
         name = self.names_frame.iloc[idx, 2]
         label = self.names_frame.iloc[idx, 3]
-        x = {'screenshot': image.to(dtype=torch.float32), 'question': name, 'dom': '', 'label': label}
+        """names = dom.split("email-body>")[1:]
+        names = [s.split("<")[0] for s in names]
+
+
+        idx = random.randint(0,2)
+        if random.randint(0,1):
+            name = names[idx]
+            label = 1
+        else:
+            new_idx = idx
+            while new_idx == idx:
+                new_idx = random.randint(0,2)
+            name = names[new_idx]
+            label = 0"""
+        # name = f"Is the {'1st' if idx == 0 else '2nd' if idx == 1 else '3rd'} email from {name.strip().replace('..', '')}"
+
+        x = {'screenshot': image.to(dtype=torch.float32), 'question': name, 'dom': dom if self.use_dom else '', 'label': label}
         # sample = {'x': EmailInboxObservation(x), 'y': label}
         return x
-
-# Create dataset
-dataset = FontInImageDataset(csv_file='data_fontsize/inbox_samples.csv', root_dir='data_fontsize/inboxes')
+    
 
 BATCH_SIZE = 32
+EMBED_DIM = 64
+USE_DOM = True
+
+# Create dataset
+dataset = FontInImageDataset('data', use_dom=USE_DOM)
+
+
 
 dataset_size = len(dataset)
 train_size = int(0.7 * dataset_size)
@@ -72,8 +103,10 @@ class ReshapeConvOutputs(torch.nn.Module):
 ]).float()"""
 
 model = torch.nn.Sequential(*[
-    MiniWobEmbedder(None, 256),
-    torch.nn.Linear(256, 2)
+    MiniWobEmbedder(None, EMBED_DIM, use_dom=USE_DOM),
+    torch.nn.Dropout(0.1),
+    torch.nn.ReLU(),
+    torch.nn.Linear(EMBED_DIM, 2)
 ]).float()
 
 
@@ -109,11 +142,13 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = model.to(device)
 criterion = torch.nn.CrossEntropyLoss()  # Binary cross entropy for binary classification
 optimizer = optim.Adam(model.parameters(), lr=1e-4)
+# optimizer = SophiaG(model.parameters(), lr=2e-4, betas=(0.965, 0.99), rho = 0.01, weight_decay=1e-1)
 
 inputs = None
-num_epochs = 5
+num_epochs = 30
 for epoch in range(num_epochs):
     running_loss = 0.0
+    cur_loss = 0.0
     for i, data in tqdm(enumerate(train_loader)):
         # get the inputs; data is a dict
         inputs = [EmailInboxObservation({
@@ -136,8 +171,10 @@ for epoch in range(num_epochs):
 
         # print statistics
         running_loss += loss.item()
+        cur_loss += loss.item()
         if i % 100 == 0:
-            print(f"Step {i}, loss: {loss.item()}")
+            print(f"Step {i}, loss: {cur_loss / 100}")
+            cur_loss = 0.0
             # Running validation
         if i % 1000 == 0:
             predicted = torch.argmax(outputs, dim=1)
