@@ -61,10 +61,10 @@ class FontInImageDataset(Dataset):
 
 BATCH_SIZE = 32
 EMBED_DIM = 64
-USE_DOM = True
+USE_DOM = False
 
 # Create dataset
-dataset = FontInImageDataset('data', use_dom=USE_DOM)
+dataset = FontInImageDataset('data_fontsize', use_dom=USE_DOM)
 
 
 
@@ -145,7 +145,7 @@ optimizer = optim.Adam(model.parameters(), lr=1e-4)
 # optimizer = SophiaG(model.parameters(), lr=2e-4, betas=(0.965, 0.99), rho = 0.01, weight_decay=1e-1)
 
 inputs = None
-num_epochs = 30
+num_epochs = 1
 for epoch in range(num_epochs):
     running_loss = 0.0
     cur_loss = 0.0
@@ -185,3 +185,5 @@ for epoch in range(num_epochs):
 test_acc = evaluate_model(model, test_loader)
 print('Finished Training')
 print(f"Test acc: {test_acc}")
+print(f"Saving weights...")
+torch.save(model[0].state_dict(), "font_size_embedder.pth")

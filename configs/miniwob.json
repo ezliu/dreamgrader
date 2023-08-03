@@ -6,7 +6,7 @@
     "type": "learned",
     "policy": {
       "embedder": {
-        "use_dom": true,
+        "use_dom": false,
         "trajectory_embedder": {
           "penalty": 0
         },
@@ -20,7 +20,7 @@
   "exploration_agent": {
     "policy": {
       "embedder": {
-        "use_dom": true,
+        "use_dom": false,
         "experience_embedder": {
           "state_embed_dim": 64,
           "action_embed_dim": 16,

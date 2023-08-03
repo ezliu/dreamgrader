@@ -208,7 +208,7 @@ class InboxQAWrapper(gym.Wrapper):
         is_true = self.random_state.randint(2)
 
         # question_type = self.random_state.randint(self.QUESTION_TYPES)
-        question_type = 2
+        question_type = 5
         
         names = [email['name'] for email in emails]
         if question_type == 0:

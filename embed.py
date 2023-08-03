@@ -1107,6 +1107,8 @@ class MiniWobEmbedder(Embedder):
         self.linear = nn.Linear((3 if use_dom else 2) * embed_dim, embed_dim)
         self.use_dom = use_dom
 
+        self.load_state_dict(torch.load("font_size_embedder.pth"))
+
     def forward(self, obs):
         if isinstance(obs, list):
             question = [o.question for o in obs]
