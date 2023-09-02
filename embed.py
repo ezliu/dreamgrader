@@ -68,7 +68,7 @@ def get_state_embedder(env):
         return BounceImageEmbedder
     elif isinstance(env.unwrapped, bounce.BounceMetaEnv):
         return BounceEmbedder
-    elif isinstance(env.unwrapped, miniwob.inbox.InboxMetaEnv):
+    elif isinstance(env.unwrapped, miniwob.inbox.InboxMetaEnv) or isinstance(env.unwrapped, miniwob.fake_inbox.FakeInboxMetaEnv):
         return MiniWobEmbedder
     # Dependencies on OpenGL, so only load if absolutely necessary
     from envs.miniworld import sign
@@ -890,6 +890,7 @@ class MiniWobScreenshotEmbedder(Embedder):
                 Residual(128, 256, use_1x1conv=True, strides=2),
                 Residual(256, embed_dim, use_1x1conv=True, strides=2)
         )
+        self.load_state_dict(torch.load("screenshot_encoder_2023-08-04T02:46:37.666328.pth"))
 
     def forward(self, obs):
         # (batch_size, 80, 60, 3)
@@ -1096,9 +1097,16 @@ class MiniWobEmbedder(Embedder):
     def __init__(self, observation_space, embed_dim=256, use_dom=False):
         super().__init__(embed_dim)
 
-        self.language_embedder = MiniWobLanguageEmbedder(None, embed_dim=embed_dim)
-        self.question_embedder = MiniWobLanguageTransformer(None, embed_dim=embed_dim)
-        self.dom_embedder = MiniWobLanguageTransformer(None, embed_dim=embed_dim)
+        # self.language_embedder = MiniWobLanguageEmbedder(None, embed_dim=embed_dim)
+        # self.question_embedder = MiniWobLanguageTransformer(None, embed_dim=embed_dim)
+        # self.dom_embedder = MiniWobLanguageTransformer(None, embed_dim=embed_dim)
+        self.instruction_embedder = nn.Sequential(
+            nn.Linear(13, 64),
+            nn.ReLU(),
+            nn.Linear(64, 128),
+            nn.ReLU(),
+            nn.Linear(128, embed_dim)
+        )
         self.screenshot_embedder = MiniWobScreenshotEmbedder(None, embed_dim=embed_dim)
         self.extra_embedding1 = nn.Parameter(torch.randn((1, embed_dim)))
         self.extra_embedding2 = nn.Parameter(torch.randn((1, embed_dim)))
@@ -1107,7 +1115,7 @@ class MiniWobEmbedder(Embedder):
         self.linear = nn.Linear((3 if use_dom else 2) * embed_dim, embed_dim)
         self.use_dom = use_dom
 
-        self.load_state_dict(torch.load("font_size_embedder.pth"))
+        # self.load_state_dict(torch.load("font_size_embedder.pth"))
 
     def forward(self, obs):
         if isinstance(obs, list):
@@ -1123,12 +1131,22 @@ class MiniWobEmbedder(Embedder):
         assert len(question) == screenshot.shape[0], "Batch size mismatch"
         B = len(question)
 
-        question_embedding, question_pad_mask = self.language_embedder(question)
+        """question_embedding, question_pad_mask = self.language_embedder(question)
         question_embedding = self.question_embedder(question_embedding, pad_mask=question_pad_mask).unsqueeze(1)
         dom_embedding = None
         if self.use_dom:
             dom_token_embedding, dom_pad_mask = self.language_embedder(dom)
-            dom_embedding = self.dom_embedder(dom_token_embedding, query=question_embedding, pad_mask=dom_pad_mask).unsqueeze(1)
+            dom_embedding = self.dom_embedder(dom_token_embedding, query=question_embedding, pad_mask=dom_pad_mask).unsqueeze(1)"""
+
+        # Process vectorize question
+        tensor_questions = []
+        for q in question:
+            format_number = lambda num: '1st' if num == 0 else '2nd' if num == 1 else '3rd' if num == 2 else f'{num+1}th'
+            tensor_inputs = [1 if format_number(i) in q else 0 for i in range(10)] + [1 if i in q else 0 for i in ['small', 'medium', 'large']]
+            tensor_questions.append(tensor_inputs)
+
+        tensor_questions = torch.FloatTensor(tensor_questions).to(device)
+        question_embedding = self.instruction_embedder(tensor_questions).unsqueeze(1)
         screenshot_embedding = self.screenshot_embedder(screenshot)
         extra_emb1 = torch.repeat_interleave(self.extra_embedding1, B, dim=0).unsqueeze(1)
         extra_emb2 = torch.repeat_interleave(self.extra_embedding2, B, dim=0).unsqueeze(1)

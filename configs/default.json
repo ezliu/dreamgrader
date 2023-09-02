@@ -6,8 +6,8 @@
       "type": "recurrent",
       "epsilon_schedule": {
         "begin": 1.0,
-        "end": 0.01,
-        "total_steps": 250000
+        "end": 0.05,
+        "total_steps": 6250
       },
       "embedder": {
         "type": "instruction",
@@ -35,7 +35,7 @@
     "buffer": {
       "type": "sequential",
       "max_buffer_size": 8000,
-      "sequence_length": 7,
+      "sequence_length": 2,
       "store_on_cpu": true
     },
     "learning_rate": 0.0001,
@@ -51,8 +51,8 @@
       "type": "recurrent",
       "epsilon_schedule": {
         "begin": 1.0,
-        "end": 0.01,
-        "total_steps": 250000
+        "end": 0.05,
+        "total_steps": 6250
       },
       "embedder": {
         "type": "recurrent",
@@ -69,7 +69,7 @@
     "buffer": {
       "type": "sequential",
       "max_buffer_size": 8000,
-      "sequence_length": 7,
+      "sequence_length": 2,
       "store_on_cpu": true
     },
     "learning_rate": 0.0001,

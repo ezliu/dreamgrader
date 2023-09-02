@@ -6,7 +6,9 @@ import torch
 import itertools
 import collections
 
+import pandas as pd
 import torch
+from torchvision.io import read_image
 import gymnasium as gym
 import numpy as np
 from PIL import Image
@@ -14,9 +16,8 @@ from gym import spaces
 
 import render
 import meta_exploration
-from envs.miniwob.wrappers import InboxScreenshotWrapper, InboxQAWrapper, WarpScreenshot, RestrictedActionWrapper, InboxDOMWrapper
-from miniwob.envs.miniwob_envs import EmailInboxEnv
-from envs.miniwob.constants import NUM_INSTANCES, TASK_HEIGHT, TASK_WIDTH
+from envs.miniwob.inbox import EmailInboxObservation
+from envs.miniwob.constants import NUM_INSTANCES, TASK_HEIGHT, TASK_WIDTH, ASCII_CHARSET, TEXT_MAX_LENGTH
 
 
 class InstructionWrapper(meta_exploration.InstructionWrapper):
@@ -60,31 +61,34 @@ class InstructionWrapper(meta_exploration.InstructionWrapper):
         return self.env.step(action)
 
 
-class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
+class FakeInboxMetaEnv(meta_exploration.MetaExplorationEnv):
     MAX_STEPS = 2
-    NUM_TRAIN = 1000000
-    NUM_TEST = 1000
+    NUM_TRAIN = 90000
+    NUM_TEST = 10000
+    CLICK_LOCATIONS = 3
+    LABEL_PATH = "./data_envs/inbox_samples.csv"
 
     def __init__(self, env_id, _):
         super().__init__(env_id, EmailInboxObservation)
         self._steps = 0
-        
-        env = EmailInboxEnv(num_instances=NUM_INSTANCES)
-        env = InboxScreenshotWrapper(env)
-        env = InboxQAWrapper(env, env_id)
-        env = InboxDOMWrapper(env)
-        env = WarpScreenshot(env)
-        env = RestrictedActionWrapper(env)
+        self.cur_states = [0 for _ in range(NUM_INSTANCES)]
+ 
         self.observation_space = gym.spaces.Dict({
-            "observation": env.observation_space,
+            "observation": gym.spaces.Sequence(
+                gym.spaces.Dict({
+                    'screenshot': gym.spaces.Box(low=0, high=255, shape=(TASK_HEIGHT, TASK_WIDTH, 1), dtype=np.uint8),
+                    'question': gym.spaces.Text(min_length=0, max_length=TEXT_MAX_LENGTH, charset=ASCII_CHARSET)
+                })
+            ),
             "env_id": gym.spaces.Box(np.array([0]),
                 np.array([500]),
                 dtype=np.int)
         })
-        self._env = env
-        self._env.reset()
-        self.action_space = self._env.action_space
+        self.action_space = gym.spaces.Discrete(self.CLICK_LOCATIONS)
         self.exploitation = False
+        self.df = pd.read_csv(os.path.abspath(self.LABEL_PATH))
+        self._questions = [self.df.iloc[idx, 1] for idx in env_id]
+        self._labels = [int(self.df.iloc[idx, 2]) for idx in env_id]
 
     @classmethod
     def instruction_wrapper(cls):
@@ -100,18 +104,14 @@ class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
 
     @property
     def env_id(self):
-        return list(zip(*self._env.current_question))[1]
-    
+        return self._labels
 
     @property
     def questions(self):
-        return list(zip(*self._env.current_question))[0]
+        return self._questions
 
     def _step(self, action):
-        # Hack to speed up env during exploitation (don't need to actually take steps)
-        if not self.exploitation:
-            state, reward, done, _, info = self._env.step(action)
-        else:
+        if self.exploitation:
             state = [{
                 "screenshot": np.zeros((TASK_HEIGHT, TASK_WIDTH, 1)),
                 "question": "None",
@@ -120,32 +120,40 @@ class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
             reward = [0] * NUM_INSTANCES
             info = [None] * NUM_INSTANCES
             done = [True] * NUM_INSTANCES
-        self._steps += 1
-        done = done if self._steps < type(self).MAX_STEPS else [True]*NUM_INSTANCES
+        else:
+            self.cur_states = [a+1 if c == 0 else c for a, c in zip(action, self.cur_states)]
+            state = [{
+                "screenshot": read_image(f"./data_envs/inboxes/{idx}-{self.cur_states[i]-1}.png").permute(1, 2, 0).cuda(),
+                "question": self._questions[i],
+                "dom": "None"
+            } for i, (idx, a) in enumerate(zip(self._env_id, action))]
+            reward = [0] * NUM_INSTANCES
+            info = [None] * NUM_INSTANCES
+            done = [False] * NUM_INSTANCES
+            self._steps += 1
+            done = done if self._steps < type(self).MAX_STEPS else [True]*NUM_INSTANCES
         return state, reward, done, info
 
     def _reset(self):
         # old hack but messes up evaluation of correct answer
         self._steps = 0
-        """if not self.exploitation:
-            obs, _ = self._env.reset(seed=self._env_id)
-        else:
-            obs = [{
-                "screenshot": np.zeros((TASK_HEIGHT, TASK_WIDTH, 1)),
-                "question": "None"
-            } for _ in range(NUM_INSTANCES)]"""
-        obs, _ = self._env.reset(seed=self._env_id)
+        self.cur_states = [0 for _ in range(NUM_INSTANCES)]
+        obs = [{
+            "question": self._questions[i],
+            "dom": None,
+            "screenshot": read_image(f"./data_envs/inboxes/{idx}.png").permute(1, 2, 0).cuda()
+        } for i, idx in enumerate(self._env_id)]
         return obs
 
     def render(self, mode=None):
-        env_render = self._env.render()
         imgs = []
         for i in range(NUM_INSTANCES):
-            img = Image.fromarray(env_render[i])
+            suffix = f"-{self.cur_states[i] - 1}" if self.cur_states[i] != 0 else ""
+            img = Image.open(f"./data_envs/inboxes/{self._env_id[i]}{suffix}.png")
             img = render.Render(img)
             img.write_text("Underlying env ID: {}".format(self._env_id[i]))
-            img.write_text(f"Q: {self._env.current_question[i][0]}")
-            img.write_text(f"A: {self._env.current_question[i][1]}")
+            img.write_text(f"Q: {self._questions[i]}")
+            img.write_text(f"A: {self._labels[i]}")
             imgs.append(img)
         return imgs
     
@@ -154,50 +162,4 @@ class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
         return self._env_id
 
     def set_underlying_env_id(self, id):
-        self._env_id = id
-        self._env.set_qa_env_ids(id)
-
-
-class EmailInboxObservation:
-    def __init__(self, observation):
-        if not isinstance(observation["screenshot"], torch.Tensor):
-            observation["screenshot"] = torch.tensor(observation["screenshot"])
-        self._observation = observation
-
-    @property
-    def is_cuda(self):
-        return self._observation["screenshot"].is_cuda
-
-    @property
-    def screenshot(self):
-        return self._observation["screenshot"]
-
-    @property
-    def question(self):
-        return self._observation["question"]
-    
-    @property
-    def dom(self):
-        return self._observation["dom"]
-
-    def cpu(self):
-        # Hacky way to accomodate cpu/cuda switching in observation buffer
-        return EmailInboxObservation({
-            "screenshot": self._observation["screenshot"].detach().cpu(),
-            "question": self._observation["question"],
-            "dom": self._observation["dom"]
-        })
-
-    def pin_memory(self):
-        return EmailInboxObservation({
-            "screenshot": self._observation["screenshot"].pin_memory(),
-            "question": self._observation["question"],
-            "dom": self._observation["dom"]
-        })
-
-    def cuda(self, **kwargs):
-        return EmailInboxObservation({
-            "screenshot": self._observation["screenshot"].cuda(**kwargs),
-            "question": self._observation["question"],
-            "dom": self._observation["dom"]
-        })
+        pass

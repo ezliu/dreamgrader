@@ -302,17 +302,23 @@ class WarpScreenshot(gym.ObservationWrapper):
 
 class RestrictedActionWrapper(gym.ActionWrapper):
     # CLICK_LOCATIONS = [(10, 10), (10, 30), (10, 50), (10, 70), (10, 90), (10, 110), (10, 130), (10, 150), (30, 10), (30, 30), (30, 50), (30, 70), (30, 90), (30, 110), (30, 130), (30, 150), (50, 10), (50, 30), (50, 50), (50, 70), (50, 90), (50, 110), (50, 130), (50, 150), (70, 10), (70, 30), (70, 50), (70, 70), (70, 90), (70, 110), (70, 130), (70, 150), (90, 10), (90, 30), (90, 50), (90, 70), (90, 90), (90, 110), (90, 130), (90, 150), (110, 10), (110, 30), (110, 50), (110, 70), (110, 90), (110, 110), (110, 130), (110, 150), (130, 10), (130, 30), (130, 50), (130, 70), (130, 90), (130, 110), (130, 130), (130, 150)]
-    CLICK_LOCATIONS = [(10, 10), (10, 50), (10, 90), (10, 130), (50, 10), (50, 50), (50, 90), (50, 130), (90, 10), (90, 50), (90, 90), (90, 130), (130, 10), (130, 50), (130, 90), (130, 130)]
+    # CLICK_LOCATIONS = [(10, 10), (10, 50), (10, 90), (10, 130), (50, 10), (50, 50), (50, 90), (50, 130), (90, 10), (90, 50), (90, 90), (90, 130), (130, 10), (130, 50), (130, 90), (130, 130)]
+    CLICK_LOCATIONS = [(40, 80), (80, 80), (120, 80)]
     SCROLL_LOCATION = (TASK_HEIGHT//2, TASK_WIDTH//2)
     SCROLL_AMOUNT = 120
 
     def __init__(self, env):
         super().__init__(env)
-        self._action_space = gym.spaces.Discrete(len(self.CLICK_LOCATIONS) + 2)
+        # self._action_space = gym.spaces.Discrete(len(self.CLICK_LOCATIONS) + 2)
+        self._action_space = gym.spaces.Discrete(len(self.CLICK_LOCATIONS))
         # self._action_space = gym.spaces.Discrete(2)
 
     def _convert_action(self, action):
         action = int(action)
+        
+        # remove
+        action += 2
+
         miniwob_action = None
         if action == 0:
             miniwob_action = create_coord_scroll_action(

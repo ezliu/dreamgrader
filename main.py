@@ -15,14 +15,16 @@ from envs import cooking
 from envs import city
 from envs import bounce
 from envs.miniwob import inbox
+from envs.miniwob import fake_inbox
 import policy
 import relabel
 import rl
 import utils
 import time
-from envs.miniwob.constants import NUM_INSTANCES
+from envs.miniwob.constants import NUM_INSTANCES, NUM_DEMOS
 
 
+collected_demos = 0
 
 buffers = {
     "episodes": {
@@ -124,6 +126,9 @@ def _run_episode(env, policy, experience_observers=None, test=False,
             test=True. Otherwise, returns list of Nones.
     """
     # Optimization: rendering takes a lot of time.
+
+    global collected_demos
+
     def maybe_render(render, action, reward, timestep, decoder_distribution=None):
         if test:
             render.write_text("Action: {}".format(str(action)))
@@ -153,14 +158,28 @@ def _run_episode(env, policy, experience_observers=None, test=False,
         renders = [renders[0]]
     while not all(done):
         # Remove grads to decrease memory usage
-        with torch.no_grad():
-            action_comp_time_start = time.time()
-            # Are we accidentally batching here? Could make smaller?
-            actions, next_hidden_state = policy.act(
-                    state, hidden_state if hidden_state is not None else [None] * NUM_INSTANCES, test=test)
-            if not exploitation:
-                next_hidden_state = [(h.reshape((1, *h.shape)), c.reshape(1, *c.shape)) for h, c in zip(next_hidden_state[0], next_hidden_state[1])]
-            action_computation_time += time.time() - action_comp_time_start
+        next_hidden_state = [None] * NUM_INSTANCES
+        if test or NUM_DEMOS == 0 or collected_demos >= NUM_DEMOS:
+            with torch.no_grad():
+                action_comp_time_start = time.time()
+                # Are we accidentally batching here? Could make smaller?
+                actions, next_hidden_state = policy.act(
+                        state, hidden_state if hidden_state is not None else [None] * NUM_INSTANCES, test=test)
+                if not exploitation:
+                    next_hidden_state = [(h.reshape((1, *h.shape)), c.reshape(1, *c.shape)) for h, c in zip(next_hidden_state[0], next_hidden_state[1])]
+                action_computation_time += time.time() - action_comp_time_start
+        elif exploitation:
+            actions = []
+            for i in range(NUM_INSTANCES):
+                actions.append(env.env_id[i])
+            collected_demos += 1
+            actions = torch.tensor(actions).to('cpu')
+        else:
+            actions = []
+            for i in range(NUM_INSTANCES):
+                question = env.questions[i]
+                actions.append(0 if '1st' in question else 1 if '2nd' in question else 2)
+            actions = torch.tensor(actions).to('cpu')
         emv_comp_time_start = time.time()
         prev_done = done
         next_state, reward, done, info = env.step(actions)
@@ -212,6 +231,8 @@ def get_env_class(environment_type):
         return sign.MiniWorldSign
     elif environment_type == "email-inbox":
         return inbox.InboxMetaEnv
+    elif environment_type == "fake-email-inbox":
+        return fake_inbox.FakeInboxMetaEnv
     else:
         raise ValueError(
                 "Unsupported environment type: {}".format(environment_type))
