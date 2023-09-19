@@ -162,4 +162,6 @@ class FakeInboxMetaEnv(meta_exploration.MetaExplorationEnv):
         return self._env_id
 
     def set_underlying_env_id(self, id):
-        pass
+        self._env_id = id
+        self._questions = [self.df.iloc[idx, 1] for idx in id]
+        self._labels = [int(self.df.iloc[idx, 2]) for idx in id]

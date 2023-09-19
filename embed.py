@@ -890,7 +890,7 @@ class MiniWobScreenshotEmbedder(Embedder):
                 Residual(128, 256, use_1x1conv=True, strides=2),
                 Residual(256, embed_dim, use_1x1conv=True, strides=2)
         )
-        self.load_state_dict(torch.load("screenshot_encoder_2023-08-04T02:46:37.666328.pth"))
+        # self.load_state_dict(torch.load("screenshot_encoder_2023-08-04T02:46:37.666328.pth"))
 
     def forward(self, obs):
         # (batch_size, 80, 60, 3)

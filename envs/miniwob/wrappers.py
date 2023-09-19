@@ -305,19 +305,16 @@ class RestrictedActionWrapper(gym.ActionWrapper):
     # CLICK_LOCATIONS = [(10, 10), (10, 50), (10, 90), (10, 130), (50, 10), (50, 50), (50, 90), (50, 130), (90, 10), (90, 50), (90, 90), (90, 130), (130, 10), (130, 50), (130, 90), (130, 130)]
     CLICK_LOCATIONS = [(40, 80), (80, 80), (120, 80)]
     SCROLL_LOCATION = (TASK_HEIGHT//2, TASK_WIDTH//2)
-    SCROLL_AMOUNT = 120
+    SCROLL_AMOUNT = 80
 
     def __init__(self, env):
         super().__init__(env)
-        # self._action_space = gym.spaces.Discrete(len(self.CLICK_LOCATIONS) + 2)
-        self._action_space = gym.spaces.Discrete(len(self.CLICK_LOCATIONS))
+        self._action_space = gym.spaces.Discrete(len(self.CLICK_LOCATIONS) + 2)
+        # self._action_space = gym.spaces.Discrete(len(self.CLICK_LOCATIONS))
         # self._action_space = gym.spaces.Discrete(2)
 
     def _convert_action(self, action):
         action = int(action)
-        
-        # remove
-        action += 2
 
         miniwob_action = None
         if action == 0:
