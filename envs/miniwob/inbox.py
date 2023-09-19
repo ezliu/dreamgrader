@@ -15,7 +15,7 @@ from gym import spaces
 import render
 import meta_exploration
 from envs.miniwob.wrappers import InboxScreenshotWrapper, InboxQAWrapper, WarpScreenshot, RestrictedActionWrapper, InboxDOMWrapper
-from miniwob.envs.miniwob_envs import EmailInboxEnv, EmailInboxEnv2
+from miniwob.envs.miniwob_envs import EmailInboxEnv
 from envs.miniwob.constants import NUM_INSTANCES, TASK_HEIGHT, TASK_WIDTH
 
 
@@ -70,8 +70,7 @@ class InboxMetaEnv(meta_exploration.MetaExplorationEnv):
         self._steps = 0
         
         # TODO: change back to original email inbox env once exp is done
-        # env = EmailInboxEnv(num_instances=NUM_INSTANCES)
-        env = EmailInboxEnv2(num_instances=NUM_INSTANCES)
+        env = EmailInboxEnv(num_instances=NUM_INSTANCES, wait_ms=150)
         env = InboxScreenshotWrapper(env)
         env = InboxQAWrapper(env, env_id)
         env = InboxDOMWrapper(env)

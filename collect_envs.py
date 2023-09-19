@@ -9,7 +9,7 @@ from time import sleep
 from envs.miniwob.inbox import InboxMetaEnv
 from envs.miniwob.constants import NUM_INSTANCES
 
-NUM_SAMPLES = 16
+NUM_SAMPLES = 32
 
 samples = 0
 
@@ -43,12 +43,10 @@ for i in tqdm(range(NUM_SAMPLES // NUM_INSTANCES)):
     # Save initial screenshot
     save_state(i, state, "")
     state, _, _, _ = env.step([0 for _ in range(NUM_INSTANCES)])
-    sleep(0.3)
 
     # Save first scroll position
     save_state(i, state, "-0")
     state, _, _, _ = env.step([0 for _ in range(NUM_INSTANCES)])
-    sleep(0.3)
 
     # Save second scroll position
     save_state(i, state, "-1")
@@ -71,14 +69,14 @@ for i in tqdm(range(NUM_SAMPLES // NUM_INSTANCES)):
     # Save 4th email
     _ = env.reset()
     state, _, _, _ = env.step([0 for _ in range(NUM_INSTANCES)])
-    sleep(0.3)
+
     state, _, _, _ = env.step([3 for _ in range(NUM_INSTANCES)])
     save_state(i, state, "-5")
 
     # Save 5th email
     _ = env.reset()
     state, _, _, _ = env.step([0 for _ in range(NUM_INSTANCES)])
-    sleep(0.3)
+
     state, _, _, _ = env.step([4 for _ in range(NUM_INSTANCES)])
     save_state(i, state, "-6")
 
@@ -86,19 +84,19 @@ for i in tqdm(range(NUM_SAMPLES // NUM_INSTANCES)):
     # Save 6th email
     _ = env.reset()
     state, _, _, _ = env.step([0 for _ in range(NUM_INSTANCES)])
-    sleep(0.3)
+
     state, _, _, _ = env.step([0 for _ in range(NUM_INSTANCES)])
-    sleep(0.3)
-    state, _, _, _ = env.step([4 for _ in range(NUM_INSTANCES)])
+
+    state, _, _, _ = env.step([3 for _ in range(NUM_INSTANCES)])
     save_state(i, state, "-7")
 
 
     # Save 7th email
     _ = env.reset()
     state, _, _, _ = env.step([0 for _ in range(NUM_INSTANCES)])
-    sleep(0.3)
+
     state, _, _, _ = env.step([0 for _ in range(NUM_INSTANCES)])
-    sleep(0.3)
+
     state, _, _, _ = env.step([4 for _ in range(NUM_INSTANCES)])
     save_state(i, state, "-8")
     
