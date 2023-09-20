@@ -19,6 +19,10 @@ import meta_exploration
 from envs.miniwob.inbox import EmailInboxObservation
 from envs.miniwob.constants import NUM_INSTANCES, TASK_HEIGHT, TASK_WIDTH, ASCII_CHARSET, TEXT_MAX_LENGTH
 
+
+# Constants
+NUM_EMAILS = 7
+
 # Actions
 SCROLL_DOWN = 0
 SCROLL_UP = 1
@@ -60,7 +64,6 @@ TRANSITIONS = {
         CLICK_DOWN: EMAIL_7
     }
 }
-
 
 
 class InstructionWrapper(meta_exploration.InstructionWrapper):
@@ -106,15 +109,17 @@ class InstructionWrapper(meta_exploration.InstructionWrapper):
 
 class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
     MAX_STEPS = 4
-    NUM_TRAIN = 22000
-    NUM_TEST = 4000
-    CLICK_LOCATIONS = 6
+    NUM_TRAIN = 120000
+    NUM_TEST = 20000
+    CLICK_LOCATIONS = 5
     DATA_DIR = "./data_envs_scroll"
 
     def __init__(self, env_id, _):
         super().__init__(env_id, EmailInboxObservation)
         self._steps = 0
         self.cur_states = [0 for _ in range(NUM_INSTANCES)]
+        self._env_numbers = [idx // NUM_EMAILS for idx in env_id]
+        self._email_indices = [idx % NUM_EMAILS for idx in env_id]
  
         self.observation_space = gym.spaces.Dict({
             "observation": gym.spaces.Sequence(
@@ -130,8 +135,9 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
         self.action_space = gym.spaces.Discrete(self.CLICK_LOCATIONS)
         self.exploitation = False
         self.df = pd.read_csv(os.path.abspath(f"{self.DATA_DIR}/inbox_samples.csv"))
-        self._questions = [self.df.iloc[idx, 1] for idx in env_id]
-        self._labels = [int(self.df.iloc[idx, 2]) for idx in env_id]
+        question_labels = [self._generate_question_and_label(id, env_number, email_number) for id, env_number, email_number in zip(env_id, self._env_numbers, self._email_indices)]
+        self._questions = [q for (q, l) in question_labels]
+        self._labels = [l for (q, l) in question_labels]
 
     @classmethod
     def instruction_wrapper(cls):
@@ -155,11 +161,25 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
 
 
     def _get_next_state(self, cur_state, action):
-        if cur_state in [0, 1] and action == 0:
-            return cur_state + 1
-        if cur_state in [1, 2] and action == 1:
-            return cur_state - 1
-        if 
+        if cur_state in TRANSITIONS and action in TRANSITIONS[cur_state]:
+            return TRANSITIONS[cur_state][action]
+        return cur_state
+    
+
+
+    def _get_screenshot(self, env_number, cur_state):
+        fname = f"{env_number}" + (f"-{cur_state - 1}" if cur_state != 0 else '')
+        return read_image(f"{self.DATA_DIR}/inboxes/{fname}.png").permute(1, 2, 0).cuda(),
+
+
+    def _generate_question_and_label(self, env_id, env_number, email_number):
+        emails = json.loads(self.df.iloc[env_number, 1])
+        all_sizes = ['small', 'medium', 'large']
+        font_size = np.random.RandomState(seed=env_id).choice(all_sizes)
+        question = f"Is the {'1st' if email_number == 0 else '2nd' if email_number == 1 else '3rd' if email_number == 2 else f'{email_number+1}th'} email body {font_size}?"
+        label = emails[email_number]["font_size"] == font_size
+        return question, label
+    
 
     def _step(self, action):
         if self.exploitation:
@@ -172,12 +192,12 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
             info = [None] * NUM_INSTANCES
             done = [True] * NUM_INSTANCES
         else:
-            self.cur_states = [a+1 if c == 0 else c for a, c in zip(action, self.cur_states)]
+            self.cur_states = [self._get_next_state(cur_state, a) for cur_state, a in zip(self.cur_states, action)]
             state = [{
-                "screenshot": read_image(f"{self.DATA_DIR}/inboxes/{idx}-{self.cur_states[i]-1}.png").permute(1, 2, 0).cuda(),
+                "screenshot": self._get_screenshot(idx, state),
                 "question": self._questions[i],
                 "dom": "None"
-            } for i, (idx, a) in enumerate(zip(self._env_id, action))]
+            } for i, (idx, state) in enumerate(zip(self._env_numbers, self.cur_states))]
             reward = [0] * NUM_INSTANCES
             info = [None] * NUM_INSTANCES
             done = [False] * NUM_INSTANCES
@@ -190,17 +210,17 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
         self._steps = 0
         self.cur_states = [0 for _ in range(NUM_INSTANCES)]
         obs = [{
+            "screenshot": self._get_screenshot(idx, state),
             "question": self._questions[i],
-            "dom": None,
-            "screenshot": read_image(f"./data_envs/inboxes/{idx}.png").permute(1, 2, 0).cuda()
-        } for i, idx in enumerate(self._env_id)]
+            "dom": "None"
+        } for i, (idx, state) in enumerate(zip(self._env_numbers, self.cur_states))]
         return obs
 
     def render(self, mode=None):
         imgs = []
         for i in range(NUM_INSTANCES):
-            suffix = f"-{self.cur_states[i] - 1}" if self.cur_states[i] != 0 else ""
-            img = Image.open(f"./data_envs/inboxes/{self._env_id[i]}{suffix}.png")
+            fname = f"{self._env_numbers[i]}" + (f"-{self.cur_states[i] - 1}" if self.cur_states[i] != 0 else '')
+            img = Image.open(f"{self.DATA_DIR}/inboxes/{fname}.png")
             img = render.Render(img)
             img.write_text("Underlying env ID: {}".format(self._env_id[i]))
             img.write_text(f"Q: {self._questions[i]}")
@@ -214,5 +234,6 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
 
     def set_underlying_env_id(self, id):
         self._env_id = id
-        self._questions = [self.df.iloc[idx, 1] for idx in id]
-        self._labels = [int(self.df.iloc[idx, 2]) for idx in id]
+        question_labels = [self._generate_question_and_label(id, env_number, email_number) for id, env_number, email_number in zip(self._env_id, self._env_numbers, self._email_indices)]
+        self._questions = [q for (q, l) in question_labels]
+        self._labels = [l for (q, l) in question_labels]

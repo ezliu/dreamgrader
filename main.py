@@ -16,6 +16,7 @@ from envs import city
 from envs import bounce
 from envs.miniwob import inbox
 from envs.miniwob import fake_inbox
+from envs.miniwob import fake_inbox_scroll
 import policy
 import relabel
 import rl
@@ -233,6 +234,8 @@ def get_env_class(environment_type):
         return inbox.InboxMetaEnv
     elif environment_type == "fake-email-inbox":
         return fake_inbox.FakeInboxMetaEnv
+    elif environment_type == "fake-email-inbox-scroll":
+        return fake_inbox_scroll.FakeInboxScrollMetaEnv
     else:
         raise ValueError(
                 "Unsupported environment type: {}".format(environment_type))

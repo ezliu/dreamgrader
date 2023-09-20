@@ -4,7 +4,8 @@ TASK_WIDTH_OFFSET = 2
 TASK_HEIGHT_OFFSET = 52
 NUM_INSTANCES = 16
 
-NUM_DEMOS = 2000
+# Setting to 0 since we don't have expert trajectory for scroll env
+NUM_DEMOS = 0
 
 ASCII_CHARSET = "".join(chr(x) for x in range(32, 128))
 TEXT_MAX_LENGTH = 256

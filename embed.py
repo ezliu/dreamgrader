@@ -68,7 +68,7 @@ def get_state_embedder(env):
         return BounceImageEmbedder
     elif isinstance(env.unwrapped, bounce.BounceMetaEnv):
         return BounceEmbedder
-    elif isinstance(env.unwrapped, miniwob.inbox.InboxMetaEnv) or isinstance(env.unwrapped, miniwob.fake_inbox.FakeInboxMetaEnv):
+    elif isinstance(env.unwrapped, miniwob.inbox.InboxMetaEnv) or isinstance(env.unwrapped, miniwob.fake_inbox.FakeInboxMetaEnv) or isinstance(env.unwrapped, miniwob.fake_inbox_scroll.FakeInboxScrollMetaEnv):
         return MiniWobEmbedder
     # Dependencies on OpenGL, so only load if absolutely necessary
     from envs.miniworld import sign
