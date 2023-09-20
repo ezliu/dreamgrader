@@ -9,7 +9,7 @@ from time import sleep
 from envs.miniwob.inbox import InboxMetaEnv
 from envs.miniwob.constants import NUM_INSTANCES
 
-NUM_SAMPLES = 32
+NUM_SAMPLES = 200000
 
 samples = 0
 
