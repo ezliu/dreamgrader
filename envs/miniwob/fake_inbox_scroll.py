@@ -46,6 +46,123 @@ EMAIL_6 = 8
 EMAIL_7 = 9
 
 
+DEMOS = {
+    INBOX_UP: {
+        0: CLICK_UP,
+        1: CLICK_MID,
+        2: CLICK_DOWN,
+        3: SCROLL_DOWN,
+        4: SCROLL_DOWN,
+        5: SCROLL_DOWN,
+        6: SCROLL_DOWN,
+    },
+    INBOX_MID: {
+        0: SCROLL_UP,
+        1: SCROLL_UP,
+        2: CLICK_UP,
+        3: CLICK_MID,
+        4: CLICK_DOWN,
+        5: SCROLL_DOWN,
+        6: SCROLL_DOWN
+    },
+    INBOX_DOWN: {
+        0: SCROLL_UP,
+        1: SCROLL_UP,
+        2: SCROLL_UP,
+        3: SCROLL_UP,
+        4: CLICK_UP,
+        5: CLICK_MID,
+        6: CLICK_DOWN
+    }
+}
+
+DEMOS_WITH_BACK = {
+    INBOX_UP: {
+        0: CLICK_UP,
+        1: CLICK_MID,
+        2: CLICK_DOWN,
+        3: SCROLL_DOWN,
+        4: SCROLL_DOWN,
+        5: SCROLL_DOWN,
+        6: SCROLL_DOWN,
+    },
+    INBOX_MID: {
+        0: SCROLL_UP,
+        1: SCROLL_UP,
+        2: CLICK_UP,
+        3: CLICK_MID,
+        4: CLICK_DOWN,
+        5: SCROLL_DOWN,
+        6: SCROLL_DOWN
+    },
+    INBOX_DOWN: {
+        0: SCROLL_UP,
+        1: SCROLL_UP,
+        2: SCROLL_UP,
+        3: SCROLL_UP,
+        4: CLICK_UP,
+        5: CLICK_MID,
+        6: CLICK_DOWN
+    },
+    EMAIL_1: {
+        1: BACK,
+        2: BACK,
+        3: BACK,
+        4: BACK,
+        5: BACK,
+        6: BACK
+    },
+    EMAIL_2: {
+        0: BACK,
+        2: BACK,
+        3: BACK,
+        4: BACK,
+        5: BACK,
+        6: BACK
+    },
+    EMAIL_3: {
+        0: BACK,
+        1: BACK,
+        3: BACK,
+        4: BACK,
+        5: BACK,
+        6: BACK
+    },
+    EMAIL_4: {
+        0: BACK,
+        1: BACK,
+        2: BACK,
+        4: BACK,
+        5: BACK,
+        6: BACK
+    },
+    EMAIL_5: {
+        0: BACK,
+        1: BACK,
+        2: BACK,
+        3: BACK,
+        5: BACK,
+        6: BACK
+    },
+    EMAIL_6: {
+        0: BACK,
+        1: BACK,
+        2: BACK,
+        3: BACK,
+        4: BACK,
+        6: BACK
+    },
+    EMAIL_7: {
+        0: BACK,
+        1: BACK,
+        2: BACK,
+        3: BACK,
+        4: BACK,
+        5: BACK
+    }
+}
+
+
 TRANSITIONS = {
     INBOX_UP: {
         SCROLL_DOWN: INBOX_MID,
@@ -139,6 +256,7 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
     USE_SYMBOL_QUERIES = None
     USE_BACK_ACTION = None
     ENV_ID_SCHEDULE = None
+    NUM_DEMOS = None
 
     ITER = None
     NUM_ACTIONS_WITH_BACK = 6
@@ -183,11 +301,32 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
         cls.NUM_TEST = config.get("num_test", 10)
         cls.USE_BACK_ACTION = config.get("use_back_action", False)
         cls.ENV_ID_SCHEDULE = config.get("env_id_schedule", None)
+        cls.NUM_DEMOS = config.get("num_demos", 0)
 
 
     @classmethod
     def set_iter(cls, iter):
         cls.ITER = iter
+
+
+    def is_demo(self):
+        return True
+        #return True if self.ITER is not None and self.ITER < self.NUM_DEMOS else False
+
+
+    def get_demo(self):
+        if self.exploitation:
+            return torch.tensor(self.env_id).to("cpu")
+        actions = []
+        demos = DEMOS_WITH_BACK if type(self).USE_BACK_ACTION else DEMOS
+        for i in range(NUM_INSTANCES):
+            if self.cur_states[i] in demos and self._email_indices[i] in demos[self.cur_states[i]]:
+                a = demos[self.cur_states[i]][self._email_indices[i]]
+            else:
+                a = np.random.randint(type(self).NUM_ACTIONS_WITH_BACK if type(self).USE_BACK_ACTION else type(self).NUM_ACTIONS_NO_BACK)
+            actions.append(a)
+        return actions
+
 
     @classmethod
     def env_ids(cls):
