@@ -1,3 +1,4 @@
+from PIL import ImageFont
 import abc
 import textwrap
 from PIL import Image, ImageDraw
@@ -33,7 +34,8 @@ class Render(abc.ABC):
     def image(self):
         """Returns a PIL.Image representation of this rendering."""
         draw = ImageDraw.Draw(self._banner)
-        draw.text((0, 0), "\n".join(self._text), (0, 0, 0))
+        font = ImageFont.truetype("arial.ttf", 10)
+        draw.text((0, 0), "\n".join(self._text), (0, 0, 0), font=font)
         return concatenate([self._banner, self._main_image], "vertical")
 
     def __deepcopy__(self, memo):

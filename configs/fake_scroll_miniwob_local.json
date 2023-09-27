@@ -1,10 +1,10 @@
 {
   "environment": {
     "type": "fake-email-inbox-scroll",
-    "use_symbol_queries": false,
-    "max_steps": 10,
-    "num_train": 25,
-    "num_test": 5,
+    "use_symbol_queries": true,
+    "max_steps": 4,
+    "num_train": 2400,
+    "num_test": 288,
     "use_back_action": false,
     "data_dir": "./data_envs_scroll"
   },

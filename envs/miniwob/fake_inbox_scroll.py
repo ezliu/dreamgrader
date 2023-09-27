@@ -147,8 +147,9 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
         super().__init__(env_id, EmailInboxObservation)
         self._steps = 0
         self.cur_states = [0 for _ in range(NUM_INSTANCES)]
-        self._env_numbers = [idx // NUM_EMAILS for idx in env_id]
-        self._email_indices = [idx % NUM_EMAILS for idx in env_id]
+        self._env_numbers = None
+        self._email_indices = None
+        self._email_sizes = None
  
         self.observation_space = gym.spaces.Dict({
             "observation": gym.spaces.Sequence(
@@ -164,9 +165,12 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
         self.action_space = gym.spaces.Discrete(type(self).NUM_ACTIONS_WITH_BACK if type(self).USE_BACK_ACTION else type(self).NUM_ACTIONS_NO_BACK)
         self.exploitation = False
         self.df = pd.read_csv(os.path.abspath(f"{self.DATA_DIR}/inbox_samples.csv"))
-        question_labels = [self._generate_question_and_label(id, env_number, email_number) for id, env_number, email_number in zip(env_id, self._env_numbers, self._email_indices)]
-        self._questions = [q for (q, l) in question_labels]
-        self._labels = [l for (q, l) in question_labels]
+        
+        self.set_underlying_env_id(env_id)
+
+
+    def calculate_envs(self):
+        self._env_numbers
 
     @classmethod
     def instruction_wrapper(cls):
@@ -207,19 +211,19 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
         return img
 
 
-    def _generate_question_and_label(self, env_id, env_number, email_number):
+    def _generate_question_and_label(self, env_id, env_number, email_number, email_size):
         emails = json.loads(self.df.iloc[env_number, 1])
-        font_size = np.random.RandomState(seed=env_id).choice(SIZES)
+        font_size = SIZES[email_size]
         question = f"Is the {'1st' if email_number == 0 else '2nd' if email_number == 1 else '3rd' if email_number == 2 else f'{email_number+1}th'} email body {font_size}?"
         
         # Only activate if using symbol queries
         if FakeInboxScrollMetaEnv.USE_SYMBOL_QUERIES:
             symbol = SYMBOLS[email_number]
-            symbol_oder = [e["symbol"] for e in emails]
-            email_number = symbol_oder.index(symbol)
+            symbol_order = [e["symbol"] for e in emails]
+            email_number = symbol_order.index(symbol)
 
         label = emails[email_number]["font_size"] == font_size
-        return question, label
+        return question, label, email_number
     
 
     def _step(self, action):
@@ -263,7 +267,14 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
             img = Image.open(f"{self.DATA_DIR}/inboxes/{self._env_numbers[i]}/{self.cur_states[i]}.png")
             img = render.Render(img)
             img.write_text("Underlying env ID: {}".format(self._env_id[i]))
-            img.write_text(f"Q: {self._questions[i]}")
+            question = self._questions[i]
+            if type(self).USE_SYMBOL_QUERIES:
+                symbol = SYMBOLS[self._email_indices[i]]
+                question = question.split()
+                question.pop(2)
+                question.insert(2, symbol)
+                question = " ".join(question)
+            img.write_text(f"Q: {question}")
             img.write_text(f"A: {self._labels[i]}")
             imgs.append(img)
         return imgs
@@ -274,8 +285,17 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
 
     def set_underlying_env_id(self, id):
         self._env_id = id
-        self._env_numbers = [idx // NUM_EMAILS for idx in id]
-        self._email_indices = [idx % NUM_EMAILS for idx in id]
-        question_labels = [self._generate_question_and_label(id, env_number, email_number) for id, env_number, email_number in zip(self._env_id, self._env_numbers, self._email_indices)]
-        self._questions = [q for (q, l) in question_labels]
-        self._labels = [l for (q, l) in question_labels]
+        id = list(range(30, 46))
+        self._env_numbers = [idx // (NUM_EMAILS * len(SIZES)) for idx in id]
+        self._email_indices = [(idx % (NUM_EMAILS * len(SIZES))) // len(SIZES) for idx in id]
+        self._email_sizes = [(idx % (NUM_EMAILS * len(SIZES))) % len(SIZES) for idx in id]
+        question_labels = [self._generate_question_and_label(id, env_number, email_number, email_size) for id, env_number, email_number, email_size in zip(self._env_id, self._env_numbers, self._email_indices, self._email_sizes)]
+        self._questions = [q for (q, _, _) in question_labels]
+        self._labels = [l for (_, l, _) in question_labels]
+        self._email_indices = [i for (_, _, i) in question_labels]
+        print(id)
+        print(self._env_numbers)
+        print(self._email_indices)
+        print(self._email_sizes)
+        print(self._questions)
+        print("--")
