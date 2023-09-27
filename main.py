@@ -506,7 +506,7 @@ def main():
                     "reward/train_no_eps", np.mean(train_no_eps_rewards), step,
                     exploration_steps + instruction_steps)
 
-        exploration_env = create_env(step // NUM_INSTANCES)
+        exploration_env = create_env(step // NUM_INSTANCES, iter=step)
         exploration_episode, _ = run_episode(
                 # Exploration episode gets ignored
                 env_class.instruction_wrapper()(

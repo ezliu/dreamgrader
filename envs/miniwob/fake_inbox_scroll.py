@@ -138,7 +138,9 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
     DATA_DIR = None
     USE_SYMBOL_QUERIES = None
     USE_BACK_ACTION = None
+    ENV_ID_SCHEDULE = None
 
+    ITER = None
     NUM_ACTIONS_WITH_BACK = 6
     NUM_ACTIONS_NO_BACK = 5
     DEFAULT_DATA_DIR = "/scr-ssd/moritzst/data_envs_scroll"
@@ -168,10 +170,6 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
         
         self.set_underlying_env_id(env_id)
 
-
-    def calculate_envs(self):
-        self._env_numbers
-
     @classmethod
     def instruction_wrapper(cls):
         return InstructionWrapper
@@ -184,10 +182,31 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
         cls.NUM_TRAIN = config.get("num_train", 100)
         cls.NUM_TEST = config.get("num_test", 10)
         cls.USE_BACK_ACTION = config.get("use_back_action", False)
+        cls.ENV_ID_SCHEDULE = config.get("env_id_schedule", None)
+
+
+    @classmethod
+    def set_iter(cls, iter):
+        cls.ITER = iter
 
     @classmethod
     def env_ids(cls):
-        return list(range(cls.NUM_TRAIN)), list(range(cls.NUM_TRAIN, cls.NUM_TRAIN + cls.NUM_TEST))
+        train_ids = list(range(cls.NUM_TRAIN))
+        if cls.ENV_ID_SCHEDULE is not None and cls.ITER is not None:
+            """Schedules are of format:
+            {
+                0: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                100: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+                200: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+                300: "all"
+                ...
+            }
+            """
+            key = sorted([k for k in cls.ENV_ID_SCHEDULE.keys() if int(k) <= cls.ITER], key=lambda x: int(x))[-1]
+            if cls.ENV_ID_SCHEDULE.get(key) != "all":
+                train_ids = cls.ENV_ID_SCHEDULE.get(key)
+                assert max(train_ids) < cls.NUM_TRAIN, "Cannot have train id outside of num train range"
+        return train_ids, list(range(cls.NUM_TRAIN, cls.NUM_TRAIN + cls.NUM_TEST))
 
     @property
     def env_id(self):
@@ -285,7 +304,6 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
 
     def set_underlying_env_id(self, id):
         self._env_id = id
-        id = list(range(30, 46))
         self._env_numbers = [idx // (NUM_EMAILS * len(SIZES)) for idx in id]
         self._email_indices = [(idx % (NUM_EMAILS * len(SIZES))) // len(SIZES) for idx in id]
         self._email_sizes = [(idx % (NUM_EMAILS * len(SIZES))) % len(SIZES) for idx in id]
@@ -293,9 +311,3 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
         self._questions = [q for (q, _, _) in question_labels]
         self._labels = [l for (_, l, _) in question_labels]
         self._email_indices = [i for (_, _, i) in question_labels]
-        print(id)
-        print(self._env_numbers)
-        print(self._email_indices)
-        print(self._email_sizes)
-        print(self._questions)
-        print("--")

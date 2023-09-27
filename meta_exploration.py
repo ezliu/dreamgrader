@@ -44,7 +44,7 @@ class MetaExplorationEnv(abc.ABC, gym.Env):
         self._wrapper = wrapper
 
     @classmethod
-    def create_env(cls, seed, test=False, wrapper=None):
+    def create_env(cls, seed, test=False, wrapper=None, iter=None):
         """Randomly creates an environment instance.
 
         Args:
@@ -60,6 +60,11 @@ class MetaExplorationEnv(abc.ABC, gym.Env):
         """
         if wrapper is None:
             wrapper = lambda state: torch.tensor(state)
+
+        if iter and not test and hasattr(cls, "set_iter"):
+            cls.set_iter(iter)
+        elif hasattr(cls, "set_iter"):
+            cls.set_iter(None)
 
         random = np.random.RandomState(seed)
         train_ids, test_ids = cls.env_ids()
