@@ -2,6 +2,7 @@
 # https://github.com/openai/baselines/blob/master/baselines/deepq/replay_buffer.py
 import numpy as np
 import relabel
+import torch
 
 
 class ReplayBuffer(object):
@@ -117,12 +118,12 @@ class SequentialReplayBuffer(ReplayBuffer):
             if isinstance(seq[0], relabel.TrajectoryExperience):
                 cuda_seq.append(relabel.TrajectoryExperience.episode_to_device(seq, cpu=False))
             else:
-                cuda_seq.append([exp.cuda() for exp in seq])
+                cuda_seq.append([exp.cuda() if torch.cuda.is_available() else exp for exp in seq])
         return cuda_seq
 
     @classmethod
     def from_config(cls, config):
         return cls(
-            config.get("max_buffer_size"), 
-            config.get("sequence_length"), 
+            config.get("max_buffer_size"),
+            config.get("sequence_length"),
             config.get("store_on_cpu"))

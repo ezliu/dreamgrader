@@ -22,6 +22,8 @@ from envs.miniwob.constants import NUM_INSTANCES, TASK_HEIGHT, TASK_WIDTH, ASCII
 
 # Constants
 NUM_EMAILS = 7
+SYMBOLS = ["■", "▲", "◆", "▼", "●", "◖", "★"]
+SIZES = ['small', 'medium', 'large']
 
 # Actions
 SCROLL_DOWN = 0
@@ -130,11 +132,16 @@ class InstructionWrapper(meta_exploration.InstructionWrapper):
 
 
 class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
-    MAX_STEPS = 4
-    NUM_TRAIN = 100 # TODO: CHANGE BACK TO 120000
-    NUM_TEST = 10 # TODO: CHANGE BACK TO 20000
-    CLICK_LOCATIONS = 5
-    DATA_DIR = "/scr-ssd/moritzst/data_envs_scroll"
+    MAX_STEPS = None
+    NUM_TRAIN = None
+    NUM_TEST = None
+    DATA_DIR = None
+    USE_SYMBOL_QUERIES = None
+    USE_BACK_ACTION = None
+
+    NUM_ACTIONS_WITH_BACK = 6
+    NUM_ACTIONS_NO_BACK = 5
+    DEFAULT_DATA_DIR = "/scr-ssd/moritzst/data_envs_scroll"
 
     def __init__(self, env_id, _):
         super().__init__(env_id, EmailInboxObservation)
@@ -151,10 +158,10 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
                 })
             ),
             "env_id": gym.spaces.Box(np.array([0]),
-                np.array([500]),
+                np.array([type(self).NUM_TRAIN + type(self).NUM_TEST + 1]),
                 dtype=np.int)
         })
-        self.action_space = gym.spaces.Discrete(self.CLICK_LOCATIONS)
+        self.action_space = gym.spaces.Discrete(type(self).NUM_ACTIONS_WITH_BACK if type(self).USE_BACK_ACTION else type(self).NUM_ACTIONS_NO_BACK)
         self.exploitation = False
         self.df = pd.read_csv(os.path.abspath(f"{self.DATA_DIR}/inbox_samples.csv"))
         question_labels = [self._generate_question_and_label(id, env_number, email_number) for id, env_number, email_number in zip(env_id, self._env_numbers, self._email_indices)]
@@ -166,8 +173,13 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
         return InstructionWrapper
 
     @classmethod
-    def load_config(cls, config=None):
-        pass
+    def load_config(cls, config: dict = None):
+        cls.USE_SYMBOL_QUERIES = config.get("use_symbol_queries", False)
+        cls.DATA_DIR = config.get("data_dir", cls.DEFAULT_DATA_DIR)
+        cls.MAX_STEPS = config.get("max_steps", 4)
+        cls.NUM_TRAIN = config.get("num_train", 100)
+        cls.NUM_TEST = config.get("num_test", 10)
+        cls.USE_BACK_ACTION = config.get("use_back_action", False)
 
     @classmethod
     def env_ids(cls):
@@ -186,18 +198,26 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
         if cur_state in TRANSITIONS and action in TRANSITIONS[cur_state]:
             return TRANSITIONS[cur_state][action]
         return cur_state
-    
 
 
     def _get_screenshot(self, env_number, cur_state):
-        return read_image(f"{self.DATA_DIR}/inboxes/{env_number}/{cur_state}.png").permute(1, 2, 0).cuda()
+        img = read_image(f"{self.DATA_DIR}/inboxes/{env_number}/{cur_state}.png").permute(1, 2, 0)
+        if torch.cuda.is_available():
+            img = img.cuda()
+        return img
 
 
     def _generate_question_and_label(self, env_id, env_number, email_number):
         emails = json.loads(self.df.iloc[env_number, 1])
-        all_sizes = ['small', 'medium', 'large']
-        font_size = np.random.RandomState(seed=env_id).choice(all_sizes)
+        font_size = np.random.RandomState(seed=env_id).choice(SIZES)
         question = f"Is the {'1st' if email_number == 0 else '2nd' if email_number == 1 else '3rd' if email_number == 2 else f'{email_number+1}th'} email body {font_size}?"
+        
+        # Only activate if using symbol queries
+        if FakeInboxScrollMetaEnv.USE_SYMBOL_QUERIES:
+            symbol = SYMBOLS[email_number]
+            symbol_oder = [e["symbol"] for e in emails]
+            email_number = symbol_oder.index(symbol)
+
         label = emails[email_number]["font_size"] == font_size
         return question, label
     
