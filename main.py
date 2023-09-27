@@ -160,7 +160,7 @@ def _run_episode(env, policy, experience_observers=None, test=False,
     while not all(done):
         # Remove grads to decrease memory usage
         next_hidden_state = [None] * NUM_INSTANCES
-        if test or NUM_DEMOS == 0 or collected_demos >= NUM_DEMOS:
+        if test or not env.is_demo():
             with torch.no_grad():
                 action_comp_time_start = time.time()
                 # Are we accidentally batching here? Could make smaller?
@@ -169,18 +169,8 @@ def _run_episode(env, policy, experience_observers=None, test=False,
                 if not exploitation:
                     next_hidden_state = [(h.reshape((1, *h.shape)), c.reshape(1, *c.shape)) for h, c in zip(next_hidden_state[0], next_hidden_state[1])]
                 action_computation_time += time.time() - action_comp_time_start
-        elif exploitation:
-            actions = []
-            for i in range(NUM_INSTANCES):
-                actions.append(env.env_id[i])
-            collected_demos += 1
-            actions = torch.tensor(actions).to('cpu')
         else:
-            actions = []
-            for i in range(NUM_INSTANCES):
-                question = env.questions[i]
-                actions.append(0 if '1st' in question else 1 if '2nd' in question else 2)
-            actions = torch.tensor(actions).to('cpu')
+            actions = env.get_demo()
         emv_comp_time_start = time.time()
         prev_done = done
         next_state, reward, done, info = env.step(actions)
