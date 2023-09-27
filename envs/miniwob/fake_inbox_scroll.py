@@ -29,6 +29,7 @@ SCROLL_UP = 1
 CLICK_UP = 2
 CLICK_MID = 3
 CLICK_DOWN = 4
+BACK = 5
 
 # States
 INBOX_UP = 0
@@ -62,6 +63,27 @@ TRANSITIONS = {
         CLICK_UP: EMAIL_5,
         CLICK_MID: EMAIL_6,
         CLICK_DOWN: EMAIL_7
+    },
+    EMAIL_1: {
+        BACK: INBOX_UP
+    },
+    EMAIL_2: {
+        BACK: INBOX_UP
+    },
+    EMAIL_3: {
+        BACK: INBOX_UP
+    },
+    EMAIL_4: {
+        BACK: INBOX_MID
+    },
+    EMAIL_5: {
+        BACK: INBOX_MID
+    },
+    EMAIL_6: {
+        BACK: INBOX_DOWN
+    },
+    EMAIL_7: {
+        BACK: INBOX_DOWN
     }
 }
 
@@ -109,10 +131,10 @@ class InstructionWrapper(meta_exploration.InstructionWrapper):
 
 class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
     MAX_STEPS = 4
-    NUM_TRAIN = 120000
-    NUM_TEST = 20000
+    NUM_TRAIN = 100 # TODO: CHANGE BACK TO 120000
+    NUM_TEST = 10 # TODO: CHANGE BACK TO 20000
     CLICK_LOCATIONS = 5
-    DATA_DIR = "./data_envs_scroll"
+    DATA_DIR = "/scr-ssd/moritzst/data_envs_scroll"
 
     def __init__(self, env_id, _):
         super().__init__(env_id, EmailInboxObservation)
@@ -168,8 +190,7 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
 
 
     def _get_screenshot(self, env_number, cur_state):
-        fname = f"{env_number}" + (f"-{cur_state - 1}" if cur_state != 0 else '')
-        return read_image(f"{self.DATA_DIR}/inboxes/{fname}.png").permute(1, 2, 0).cuda(),
+        return read_image(f"{self.DATA_DIR}/inboxes/{env_number}/{cur_state}.png").permute(1, 2, 0).cuda()
 
 
     def _generate_question_and_label(self, env_id, env_number, email_number):
@@ -219,8 +240,7 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
     def render(self, mode=None):
         imgs = []
         for i in range(NUM_INSTANCES):
-            fname = f"{self._env_numbers[i]}" + (f"-{self.cur_states[i] - 1}" if self.cur_states[i] != 0 else '')
-            img = Image.open(f"{self.DATA_DIR}/inboxes/{fname}.png")
+            img = Image.open(f"{self.DATA_DIR}/inboxes/{self._env_numbers[i]}/{self.cur_states[i]}.png")
             img = render.Render(img)
             img.write_text("Underlying env ID: {}".format(self._env_id[i]))
             img.write_text(f"Q: {self._questions[i]}")
@@ -234,6 +254,8 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
 
     def set_underlying_env_id(self, id):
         self._env_id = id
+        self._env_numbers = [idx // NUM_EMAILS for idx in id]
+        self._email_indices = [idx % NUM_EMAILS for idx in id]
         question_labels = [self._generate_question_and_label(id, env_number, email_number) for id, env_number, email_number in zip(self._env_id, self._env_numbers, self._email_indices)]
         self._questions = [q for (q, l) in question_labels]
         self._labels = [l for (q, l) in question_labels]
