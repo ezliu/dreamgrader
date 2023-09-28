@@ -1,7 +1,7 @@
 {
   "environment": {
     "type": "fake-email-inbox-scroll",
-    "use_symbol_queries": false,
+    "use_symbol_queries": true,
     "max_steps": 4,
     "num_train": 2400,
     "num_test": 288,

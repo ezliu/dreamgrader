@@ -372,13 +372,14 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
     def _generate_question_and_label(self, env_id, env_number, email_number, email_size):
         emails = json.loads(self.df.iloc[env_number, 1])
         font_size = SIZES[email_size]
-        question = f"Is the {'1st' if email_number == 0 else '2nd' if email_number == 1 else '3rd' if email_number == 2 else f'{email_number+1}th'} email body {font_size}?"
         
         # Only activate if using symbol queries
         if FakeInboxScrollMetaEnv.USE_SYMBOL_QUERIES:
             symbol = SYMBOLS[email_number]
             symbol_order = [e["symbol"] for e in emails]
             email_number = symbol_order.index(symbol)
+        
+        question = f"Is the {'1st' if email_number == 0 else '2nd' if email_number == 1 else '3rd' if email_number == 2 else f'{email_number+1}th'} email body {font_size}?"
 
         label = emails[email_number]["font_size"] == font_size
         return question, label, email_number
@@ -427,10 +428,12 @@ class FakeInboxScrollMetaEnv(meta_exploration.MetaExplorationEnv):
             img.write_text("Underlying env ID: {}".format(self._env_id[i]))
             question = self._questions[i]
             if type(self).USE_SYMBOL_QUERIES:
-                symbol = SYMBOLS[self._email_indices[i]]
+                emails = json.loads(self.df.iloc[self._env_numbers[i], 1])
+                symbol = emails[self._email_indices[i]]["symbol"]
                 question = question.split()
                 question.pop(2)
                 question.insert(2, symbol)
+                question.insert(3, f"({self._email_indices[i]+1})")
                 question = " ".join(question)
             img.write_text(f"Q: {question}")
             img.write_text(f"A: {self._labels[i]}")
