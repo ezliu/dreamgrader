@@ -68,6 +68,8 @@ def get_state_embedder(env):
         return BounceImageEmbedder
     elif isinstance(env.unwrapped, bounce.BounceMetaEnv):
         return BounceEmbedder
+    elif isinstance(env.unwrapped, miniwob.fake_inbox_scroll_vectorized.FakeInboxScrollVectorizedMetaEnv):
+        return MiniWobVectorizedEmbedder
     elif isinstance(env.unwrapped, miniwob.inbox.InboxMetaEnv) or isinstance(env.unwrapped, miniwob.fake_inbox.FakeInboxMetaEnv) or isinstance(env.unwrapped, miniwob.fake_inbox_scroll.FakeInboxScrollMetaEnv):
         return MiniWobEmbedder
     # Dependencies on OpenGL, so only load if absolutely necessary
@@ -1085,6 +1087,55 @@ class PositionalEncoding(nn.Module):
     def generate_square_subsequent_mask(sz: int) -> Tensor:
         # Generates an upper-triangular matrix of -inf, with zeros on diag.
         return torch.triu(torch.ones(sz, sz) * float('-inf'), diagonal=1)"""
+
+
+class MiniWobVectorizedEmbedder(Embedder):
+    def __init__(self, observation_space, embed_dim, use_dom=False):
+        super().__init__(embed_dim)
+
+        hidden_size = 128
+        self.state_embedder = nn.Sequential(
+                nn.Linear(observation_space.feature_space["screenshot"].shape[0], hidden_size),
+                nn.ReLU(),
+                nn.Linear(hidden_size, embed_dim),
+        )
+        self.instruction_embedder = nn.Sequential(
+            nn.Linear(10, 64),
+            nn.ReLU(),
+            nn.Linear(64, 128),
+            nn.ReLU(),
+            nn.Linear(128, embed_dim)
+        )
+        self.linear = nn.Linear(embed_dim * 2, embed_dim)
+
+    def forward(self, obs):
+
+        if isinstance(obs, list):
+            question = [o.question for o in obs]
+            dom = [o.dom for o in obs]
+            screenshot = torch.stack([o.screenshot for o in obs])
+        else:
+            question = [obs.question]
+            dom = [obs.dom]
+            screenshot = obs.screenshot.unsqueeze(0)
+        
+        # Check batch size
+        assert len(question) == screenshot.shape[0], "Batch size mismatch"
+        B = len(question)
+
+        tensor_questions = []
+        for q in question:
+            format_number = lambda num: '1st' if num == 0 else '2nd' if num == 1 else '3rd' if num == 2 else f'{num+1}th'
+            tensor_inputs = [1 if format_number(i) in q else 0 for i in range(7)] + [1 if i in q else 0 for i in ['small', 'medium', 'large']]
+            tensor_questions.append(tensor_inputs)
+
+        tensor_questions = torch.FloatTensor(tensor_questions).to(device)
+        tensor_screenshot = screenshot.float().to(device)
+        question_embedding = self.instruction_embedder(tensor_questions)
+        state_embedding = self.state_embedder(tensor_screenshot)
+        res = torch.cat([question_embedding, state_embedding], dim=1).reshape(B, -1)
+        res = self.linear(res)
+        return res
 
 
 class MiniWobEmbedder(Embedder):
