@@ -1,7 +1,7 @@
 import abc
 import enum
 
-import gym
+import gymnasium as gym
 import numpy as np
 from PIL import Image, ImageDraw
 

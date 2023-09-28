@@ -14,12 +14,105 @@ from envs import grid
 from envs import cooking
 from envs import city
 from envs import bounce
+from envs.miniwob import inbox
+from envs.miniwob import fake_inbox
+from envs.miniwob import fake_inbox_scroll
+from envs.miniwob import fake_inbox_scroll_vectorized
 import policy
 import relabel
 import rl
 import utils
+import time
+from envs.miniwob.constants import NUM_INSTANCES, NUM_DEMOS
+
+
+collected_demos = 0
+
+buffers = {
+    "episodes": {
+        "test": {
+            "exploitation": [],
+            "exploration": []
+        },
+        "train": {
+            "exploitation": [],
+            "exploration": []
+        }
+    },
+    "renders": {
+        "test": {
+            "exploitation": [],
+            "exploration": []
+        },
+        "train": {
+            "exploitation": [],
+            "exploration": []
+        }
+    }
+}
+
+def clear_buffers():
+    global buffers
+    buffers = {
+        "episodes": {
+            "test": {
+                "exploitation": [],
+                "exploration": []
+            },
+            "train": {
+                "exploitation": [],
+                "exploration": []
+            }
+        },
+        "renders": {
+            "test": {
+                "exploitation": [],
+                "exploration": []
+            },
+            "train": {
+                "exploitation": [],
+                "exploration": []
+            }
+        }
+    }
+
+def log_buffer_sizes():
+    for split in buffers["episodes"]:
+        for mode in buffers["episodes"][split]:
+            print(f"{split}-{mode} buffer: {len(buffers['episodes'][split][mode])}")
+
 
 def run_episode(env, policy, experience_observers=None, test=False,
+                exploitation=False):
+    global buffers
+    
+    episode_buffer = buffers["episodes"]["test" if test else "train"]["exploitation" if exploitation else "exploration"]
+    render_buffer = buffers["renders"]["test" if test else "train"]["exploitation" if exploitation else "exploration"]
+
+    if exploitation:
+        env.set_underlying_env_id([env.underlying_env_id[15 - len(buffers["episodes"]["test" if test else "train"]["exploration"])]] * NUM_INSTANCES)
+
+    if len(episode_buffer) == 0:
+        episodes, renders = _run_episode(
+            env, policy, experience_observers=experience_observers, test=test,
+            exploitation=exploitation)
+        if not exploitation:
+            episode_buffer.extend(episodes)
+            render_buffer.extend(renders)
+        else:
+            # Need to handle that exploitation only uses a specific trajectory
+            episode_buffer.append(episodes[0])
+            render_buffer.append(renders[0])
+    
+    e = episode_buffer.pop(0)
+    r = render_buffer.pop(0)
+    if experience_observers is not None:
+        for observer in experience_observers:
+            for experience in e:
+                observer(experience)
+    return e, r
+
+def _run_episode(env, policy, experience_observers=None, test=False,
                 exploitation=False):
     """Runs a single episode on the environment following the policy.
 
@@ -35,9 +128,11 @@ def run_episode(env, policy, experience_observers=None, test=False,
             test=True. Otherwise, returns list of Nones.
     """
     # Optimization: rendering takes a lot of time.
-    def maybe_render(env, action, reward, timestep, decoder_distribution=None):
+
+    global collected_demos
+
+    def maybe_render(render, action, reward, timestep, decoder_distribution=None):
         if test:
-            render = env.render()
             render.write_text("Action: {}".format(str(action)))
             render.write_text("Reward: {}".format(reward))
             render.write_text("Timestep: {}".format(timestep))
@@ -50,34 +145,55 @@ def run_episode(env, policy, experience_observers=None, test=False,
     if experience_observers is None:
         experience_observers = []
 
-    episode = []
+    episodes = [[] for _ in range(NUM_INSTANCES)]
+    
     state = env.reset()
     timestep = 0
-    renders = [maybe_render(env, None, 0, timestep)]
+    renders = [[maybe_render(r, None, 0, timestep)] for r in env.render()]
     hidden_state = None
-    while True:
+    action_computation_time = 0
+    emv_computation_time = 0
+    done = [False] * NUM_INSTANCES
+    if exploitation:
+        state = [state[0]]
+        done = [done[0]]
+        renders = [renders[0]]
+    while not all(done):
         # Remove grads to decrease memory usage
-        with torch.no_grad():
-            action, next_hidden_state = policy.act(
-                    state, hidden_state, test=test)
-        next_state, reward, done, info = env.step(action)
+        next_hidden_state = [None] * NUM_INSTANCES
+        if test or not env.is_demo():
+            with torch.no_grad():
+                action_comp_time_start = time.time()
+                # Are we accidentally batching here? Could make smaller?
+                actions, next_hidden_state = policy.act(
+                        state, hidden_state if hidden_state is not None else [None] * NUM_INSTANCES, test=test)
+                if not exploitation:
+                    next_hidden_state = [(h.reshape((1, *h.shape)), c.reshape(1, *c.shape)) for h, c in zip(next_hidden_state[0], next_hidden_state[1])]
+                action_computation_time += time.time() - action_comp_time_start
+        else:
+            actions = env.get_demo()
+        emv_comp_time_start = time.time()
+        prev_done = done
+        next_state, reward, done, info = env.step(actions)
+        emv_computation_time += time.time() - emv_comp_time_start
         timestep += 1
         decoder_distribution = None
         if exploitation:
             decoder_distribution = next_hidden_state
-        renders.append(
-                maybe_render(env, action, reward, timestep, decoder_distribution))
-        experience = rl.Experience(
-                state, action, reward, next_state, done, info, hidden_state,
-                next_hidden_state)
-        episode.append(experience)
-        for observer in experience_observers:
-            observer(experience)
+        for i, r in enumerate(env.render()):
+            if not prev_done[i]:
+                renders[i].append(
+                        maybe_render(r, actions[i], reward[i], timestep, decoder_distribution[i] if exploitation else None))
+                episodes[i].append(
+                    rl.Experience(
+                    state[i], actions[i], reward[i], next_state[i], done[i], info[i], hidden_state[i] if hidden_state is not None else None,
+                    next_hidden_state[i]))
+            if exploitation:
+                break
 
         state = next_state
         hidden_state = next_hidden_state
-        if done:
-            return episode, renders
+    return episodes, renders
 
 
 def get_env_class(environment_type):
@@ -105,6 +221,14 @@ def get_env_class(environment_type):
         # Dependencies on OpenGL, so only load if absolutely necessary
         from envs.miniworld import sign
         return sign.MiniWorldSign
+    elif environment_type == "email-inbox":
+        return inbox.InboxMetaEnv
+    elif environment_type == "fake-email-inbox":
+        return fake_inbox.FakeInboxMetaEnv
+    elif environment_type == "fake-email-inbox-scroll":
+        return fake_inbox_scroll.FakeInboxScrollMetaEnv
+    elif environment_type == "fake-email-inbox-scroll-vectorized":
+        return fake_inbox_scroll_vectorized.FakeInboxScrollVectorizedMetaEnv
     else:
         raise ValueError(
                 "Unsupported environment type: {}".format(environment_type))
@@ -147,6 +271,7 @@ def log_episode(exploration_episode, exploration_rewards, distances, path):
 
 
 def precision_recall(bug_is_present, rewards):
+    return 0, 0
     # Compute the precision and recall given a list of bug is present and
     # parallel list of rewards
     correct_bug_detected = sum(np.array(bug_is_present) * np.array(rewards))
@@ -258,14 +383,131 @@ def main():
     exploration_steps = 0
     instruction_steps = 0
     for step in tqdm.tqdm(range(1000000)):
-        exploration_env = create_env(step)
+        if step % 2000 == 0:
+            visualize_dir = os.path.join(exp_dir, "visualize", str(step))
+            os.makedirs(visualize_dir, exist_ok=True)
+
+            test_rewards = []
+            test_bug_is_present = []
+            test_exploration_lengths = []
+            trajectory_embedder.use_ids(False)
+            clear_buffers()
+            for test_index in tqdm.tqdm(range(480)):
+                exploration_env = create_env(test_index // NUM_INSTANCES, test=True)
+                exploration_episode, exploration_render = run_episode(
+                        env_class.instruction_wrapper()(
+                                exploration_env, [],
+                                seed=max(0, test_index - 1), test=True),
+                        exploration_agent, test=True)
+                test_exploration_lengths.append(len(exploration_episode))
+
+                instruction_env = env_class.instruction_wrapper()(
+                        exploration_env, exploration_episode,
+                        seed=test_index + 1, test=True, exploitation=True)
+                episode, render = run_episode(
+                        instruction_env, instruction_agent, test=True,
+                        exploitation=True)
+                test_rewards.append(sum(exp.reward for exp in episode))
+                test_bug_is_present.append(exploration_env.env_id)
+
+                if test_index < 100:
+                    frames = [frame.image() for frame in render]
+                    episodic_returns = sum(exp.reward for exp in episode)
+                    save_path = os.path.join(
+                            visualize_dir, "{}-instruction-{}.gif".format(test_index, episodic_returns))
+                    frames[0].save(save_path, save_all=True, append_images=frames[1:],
+                                                 duration=750, loop=0, optimize=True, quality=20)
+
+                    exploration_rewards, log_probs = (
+                            trajectory_embedder.label_rewards(
+                                [exploration_episode]))
+                    exploration_rewards = exploration_rewards.cpu().data.numpy()
+                    log_probs = log_probs.cpu().data.numpy()
+                    frames = []
+                    for exploration_r, log_prob, frame in zip(
+                            exploration_rewards[0], log_probs[0],
+                            exploration_render):
+                        frame.write_text(f"Exploration reward: {exploration_r:.3f}")
+                        frame.write_text(f"Prob: {np.exp(log_prob):.3f}")
+                        frames.append(frame.image())
+
+                    #frames = [frame.image() for frame in exploration_render]
+                    save_path = os.path.join(
+                            visualize_dir, "{}-exploration-{}.gif".format(test_index, episodic_returns))
+                    frames[0].save(save_path, save_all=True, append_images=frames[1:],
+                                                 duration=750, loop=0, optimize=True, quality=20)
+
+            test_rewards_dir = os.path.join(exp_dir, "test_rewards")
+            os.makedirs(test_rewards_dir, exist_ok=True)
+            with open(os.path.join(test_rewards_dir, f"{step}.txt"), "w") as f:
+                f.write(str(test_rewards))
+            tb_writer.add_scalar(
+                    "reward/test", np.mean(test_rewards), step,
+                    exploration_steps + instruction_steps)
+            tb_writer.add_scalar(
+                    "steps/test_exploration_per_episode",
+                    np.mean(test_exploration_lengths), step,
+                    exploration_steps + instruction_steps)
+
+            precision, recall = precision_recall(
+                    test_bug_is_present, test_rewards)
+            tb_writer.add_scalar(
+                    "reward/test_precision", precision, step,
+                    exploration_steps + instruction_steps)
+            tb_writer.add_scalar(
+                    "reward/test_recall", recall, step,
+                    exploration_steps + instruction_steps)
+            tb_writer.add_scalar(
+                    "reward/test_num_bug", np.mean(test_bug_is_present), step,
+                    exploration_steps + instruction_steps)
+
+            # Visualize training split
+            visualize_dir = os.path.join(exp_dir, "visualize", str(step), "train")
+            os.makedirs(visualize_dir, exist_ok=True)
+            clear_buffers()
+            train_no_eps_rewards = []
+            for train_index in tqdm.tqdm(range(128)):
+                exploration_env = create_env(train_index // NUM_INSTANCES)
+                # Test flags here only refer to making agent act with test flag and
+                # not test split environments
+                exploration_episode, exploration_render = run_episode(
+                        env_class.instruction_wrapper()(
+                                exploration_env, [], seed=max(0, train_index - 1)),
+                        exploration_agent, test=True)
+
+                instruction_env = env_class.instruction_wrapper()(
+                        exploration_env, exploration_episode,
+                        seed=train_index + 1, exploitation=True)
+                episode, render = run_episode(
+                        instruction_env, instruction_agent, test=True,
+                        exploitation=True)
+
+                frames = [frame.image() for frame in render]
+                save_path = os.path.join(
+                        visualize_dir, "{}-instruction.gif".format(train_index))
+                frames[0].save(save_path, save_all=True, append_images=frames[1:],
+                                             duration=750, loop=0)
+
+                frames = [frame.image() for frame in exploration_render]
+                save_path = os.path.join(
+                        visualize_dir, "{}-exploration.gif".format(train_index))
+                frames[0].save(save_path, save_all=True, append_images=frames[1:],
+                                             duration=750, loop=0)
+                train_no_eps_rewards.append(sum(exp.reward for exp in episode))
+            trajectory_embedder.use_ids(True)
+            tb_writer.add_scalar(
+                    "reward/train_no_eps", np.mean(train_no_eps_rewards), step,
+                    exploration_steps + instruction_steps)
+
+        exploration_env = create_env(step // NUM_INSTANCES, iter=step)
         exploration_episode, _ = run_episode(
                 # Exploration episode gets ignored
                 env_class.instruction_wrapper()(
                         exploration_env, [], seed=max(0, step - 1)),
                 exploration_agent)
+        # Interleave this
         for exp in relabel.TrajectoryExperience.episode_to_device(
-                    exploration_episode, 
+                    exploration_episode,
                     exploration_agent.buffer_on_cpu):
             exploration_agent.update(exp)
 
@@ -276,6 +518,9 @@ def main():
         instruction_env = env_class.instruction_wrapper()(
                 exploration_env, exploration_episode, seed=step + 1,
                 exploitation=True)
+
+
+        # TODO: check expl & instruction env IDs match here
 
         if step % 2 == 0:
             trajectory_embedder.use_ids(False)
@@ -339,115 +584,6 @@ def main():
                     "reward/num_bug", np.mean(bug_is_present), step,
                     exploration_steps + instruction_steps)
 
-        if step % 2000 == 0:
-            visualize_dir = os.path.join(exp_dir, "visualize", str(step))
-            os.makedirs(visualize_dir, exist_ok=True)
-
-            test_rewards = []
-            test_bug_is_present = []
-            test_exploration_lengths = []
-            trajectory_embedder.use_ids(False)
-            for test_index in tqdm.tqdm(range(1000)):
-                exploration_env = create_env(test_index, test=True)
-                exploration_episode, exploration_render = run_episode(
-                        env_class.instruction_wrapper()(
-                                exploration_env, [],
-                                seed=max(0, test_index - 1), test=True),
-                        exploration_agent, test=True)
-                test_exploration_lengths.append(len(exploration_episode))
-
-                instruction_env = env_class.instruction_wrapper()(
-                        exploration_env, exploration_episode,
-                        seed=test_index + 1, test=True, exploitation=True)
-                episode, render = run_episode(
-                        instruction_env, instruction_agent, test=True,
-                        exploitation=True)
-                test_rewards.append(sum(exp.reward for exp in episode))
-                test_bug_is_present.append(exploration_env.env_id)
-
-                if test_index < 100:
-                    frames = [frame.image() for frame in render]
-                    episodic_returns = sum(exp.reward for exp in episode)
-                    save_path = os.path.join(
-                            visualize_dir, "{}-instruction-{}.gif".format(test_index, episodic_returns))
-                    frames[0].save(save_path, save_all=True, append_images=frames[1:],
-                                                 duration=750, loop=0, optimize=True, quality=20)
-
-                    exploration_rewards, log_probs = (
-                            trajectory_embedder.label_rewards(
-                                [exploration_episode]))
-                    exploration_rewards = exploration_rewards.cpu().data.numpy()
-                    log_probs = log_probs.cpu().data.numpy()
-                    frames = []
-                    for exploration_r, log_prob, frame in zip(
-                            exploration_rewards[0], log_probs[0],
-                            exploration_render):
-                        frame.write_text(f"Exploration reward: {exploration_r:.3f}")
-                        frame.write_text(f"Prob: {np.exp(log_prob):.3f}")
-                        frames.append(frame.image())
-
-                    #frames = [frame.image() for frame in exploration_render]
-                    save_path = os.path.join(
-                            visualize_dir, "{}-exploration-{}.gif".format(test_index, episodic_returns))
-                    frames[0].save(save_path, save_all=True, append_images=frames[1:],
-                                                 duration=50, loop=0, optimize=True, quality=20)
-
-            test_rewards_dir = os.path.join(exp_dir, "test_rewards")
-            os.makedirs(test_rewards_dir, exist_ok=True)
-            with open(os.path.join(test_rewards_dir, f"{step}.txt"), "w") as f:
-                f.write(str(test_rewards))
-            tb_writer.add_scalar(
-                    "reward/test", np.mean(test_rewards), step,
-                    exploration_steps + instruction_steps)
-            tb_writer.add_scalar(
-                    "steps/test_exploration_per_episode",
-                    np.mean(test_exploration_lengths), step,
-                    exploration_steps + instruction_steps)
-
-            precision, recall = precision_recall(
-                    test_bug_is_present, test_rewards)
-            tb_writer.add_scalar(
-                    "reward/test_precision", precision, step,
-                    exploration_steps + instruction_steps)
-            tb_writer.add_scalar(
-                    "reward/test_recall", recall, step,
-                    exploration_steps + instruction_steps)
-            tb_writer.add_scalar(
-                    "reward/test_num_bug", np.mean(test_bug_is_present), step,
-                    exploration_steps + instruction_steps)
-
-            # Visualize training split
-            visualize_dir = os.path.join(exp_dir, "visualize", str(step), "train")
-            os.makedirs(visualize_dir, exist_ok=True)
-            for train_index in tqdm.tqdm(range(20)):
-                exploration_env = create_env(train_index)
-                # Test flags here only refer to making agent act with test flag and
-                # not test split environments
-                exploration_episode, exploration_render = run_episode(
-                        env_class.instruction_wrapper()(
-                                exploration_env, [], seed=max(0, train_index - 1)),
-                        exploration_agent, test=True)
-
-                instruction_env = env_class.instruction_wrapper()(
-                        exploration_env, exploration_episode,
-                        seed=train_index + 1, exploitation=True)
-                episode, render = run_episode(
-                        instruction_env, instruction_agent, test=True,
-                        exploitation=True)
-
-                frames = [frame.image() for frame in render]
-                save_path = os.path.join(
-                        visualize_dir, "{}-instruction.gif".format(train_index))
-                frames[0].save(save_path, save_all=True, append_images=frames[1:],
-                                             duration=750, loop=0)
-
-                frames = [frame.image() for frame in exploration_render]
-                save_path = os.path.join(
-                        visualize_dir, "{}-exploration.gif".format(train_index))
-                frames[0].save(save_path, save_all=True, append_images=frames[1:],
-                                             duration=50, loop=0)
-            trajectory_embedder.use_ids(True)
-
         if step != 0 and step % 20000 == 0:
             print("Saving checkpoint")
             save_dir = os.path.join(checkpoint_dir, str(step))
@@ -460,4 +596,12 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        from miniwob.environment import INSTANCES
+
+        for instance in INSTANCES:
+            instance.close()
+
+        raise e

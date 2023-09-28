@@ -1,0 +1,38 @@
+{
+  "environment": {
+    "type": "fake-email-inbox-scroll-vectorized",
+    "use_symbol_queries": false,
+    "max_steps": 4,
+    "num_train": 90000,
+    "num_test": 10000,
+    "use_back_action": false,
+    "data_dir": "/scr-ssd/moritzst/data_envs_scroll"
+  },
+  "instruction_agent": {
+    "type": "learned",
+    "policy": {
+      "embedder": {
+        "use_dom": false,
+        "trajectory_embedder": {
+          "penalty": 0
+        },
+        "transition_embedder": {
+           "reward_embed_dim": 32
+        }
+      }
+    },
+    "update_freq": 4
+  },
+  "exploration_agent": {
+    "policy": {
+      "embedder": {
+        "use_dom": false,
+        "experience_embedder": {
+          "state_embed_dim": 64,
+          "action_embed_dim": 16,
+          "embed_dim": 64
+        }
+      }
+    }
+  }
+}

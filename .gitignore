@@ -1,0 +1,25 @@
+*~
+*.pyc
+*.swp
+*.bak
+.cache
+.__pycache__
+
+# Python egg metadata, regenerated from source files by setuptools.
+/*.egg-info
+build/
+chromedriver
+geckodriver
+msedgedriver
+.buildt/
+experiments/
+tmp.sh
+sbatch/
+data/
+data
+data/*
+data_fontsize
+data_fontsize/
+data_fontsize/*
+data_envs/
+data_envs_scroll/

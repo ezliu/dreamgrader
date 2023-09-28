@@ -1,9 +1,11 @@
 import abc
 import collections
 
-import gym
+import gymnasium as gym
 import torch
 import numpy as np
+
+from envs.miniwob.constants import NUM_INSTANCES
 
 
 # TODO: Switch from namedtuple to dataclass
@@ -42,7 +44,7 @@ class MetaExplorationEnv(abc.ABC, gym.Env):
         self._wrapper = wrapper
 
     @classmethod
-    def create_env(cls, seed, test=False, wrapper=None):
+    def create_env(cls, seed, test=False, wrapper=None, iter=None):
         """Randomly creates an environment instance.
 
         Args:
@@ -59,11 +61,16 @@ class MetaExplorationEnv(abc.ABC, gym.Env):
         if wrapper is None:
             wrapper = lambda state: torch.tensor(state)
 
+        if iter and not test and hasattr(cls, "set_iter"):
+            cls.set_iter(iter)
+        elif hasattr(cls, "set_iter"):
+            cls.set_iter(None)
+
         random = np.random.RandomState(seed)
         train_ids, test_ids = cls.env_ids()
         split = test_ids if test else train_ids
-        env_id = split[random.randint(len(split))]
-        return cls(env_id, wrapper)
+        env_ids = [split[random.randint(len(split))] for _ in range(NUM_INSTANCES)]
+        return cls(env_ids, wrapper)
 
     @abc.abstractmethod
     def env_ids(cls):
@@ -91,17 +98,18 @@ class MetaExplorationEnv(abc.ABC, gym.Env):
 
     def step(self, action):
         state, reward, done, info = self._step(action)
-        state = MetaExplorationState(
-                self._wrapper(state), reward, action, self.env_id)
+        state = [MetaExplorationState(
+                self._wrapper(state[i]), reward[i], action[i], self.env_id[i]) for i in range(len(action))]
         return state, reward, done, info
 
     @abc.abstractmethod
     def _reset(self):
         raise NotImplementedError()
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
         state = self._reset()
-        state = MetaExplorationState(self._wrapper(state), 0, None, self.env_id)
+        state = [MetaExplorationState(
+                self._wrapper(state[i]), 0, None, self.env_id[i]) for i in range(len(state))]
         return state
 
     @property
@@ -137,14 +145,14 @@ class InstructionState(collections.namedtuple(
         - env_id (int): see MetaExplorationState.
     """
     def cpu(self):
-        if not self.observation.is_cuda and not self.trajectory[0].state.observation.is_cuda:
+        if not self.observation.is_cuda and len(self.trajectory) > 0 and not self.trajectory[0].state.observation.is_cuda:
             return self
         return self._replace(
             observation=self.observation.cpu().pin_memory(),
             trajectory=[exp.cpu() for exp in self.trajectory])
 
     def cuda(self):
-        if self.observation.is_cuda and self.trajectory[0].state.observation.is_cuda:
+        if self.observation.is_cuda and (len(self.trajectory) > 0 and self.trajectory[0].state.observation.is_cuda):
             return self
         return self._replace(
             observation=self.observation.cuda(non_blocking=True),
@@ -236,7 +244,7 @@ class InstructionWrapper(abc.ABC, gym.Wrapper):
         first_episode_no_instruction flag is set."""
         return np.array(self.observation_space["instructions"].low)
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
         self._num_episodes += 1
         state = super().reset()
 
@@ -246,26 +254,26 @@ class InstructionWrapper(abc.ABC, gym.Wrapper):
             if not (self._num_episodes > 1 and self._fixed_instructions):
                 self._current_instructions = self._generate_instructions(
                         test=self._test)
-
-        return InstructionState(
-                state.observation, self._current_instructions, None, 0, False,
-                self._trajectory, state.env_id)
+        return [InstructionState(
+                s.observation, self._current_instructions, None, 0, False,
+                self._trajectory, s.env_id) for s in state]
 
     def step(self, action):
         state, original_reward, done, info = super().step(action)
-        state = InstructionState(
-                state.observation, self._current_instructions, action, None, False,
-                self._trajectory, state.env_id)
+        state = [InstructionState(
+                s.observation, self._current_instructions, a, None, False,
+                self._trajectory, s.env_id) for a, s in zip(action, state)]
 
-        if self._num_episodes == 1 and self._first_episode_no_instruction:
-            reward, instructions_complete = 0, False
-        else:
-            reward, instructions_complete = self._reward(
-                    state, action, original_reward)
+        for i in range(len(state)):
+            if self._num_episodes == 1 and self._first_episode_no_instruction:
+                reward, instructions_complete = 0, False
+            else:
+                reward, instructions_complete = self._reward(
+                        state[i], action[i], original_reward[i])
 
-        done = instructions_complete or done
-        state = state._replace(prev_reward=reward, done=done)
+            done = instructions_complete or done[i]
+            state[i] = state[i]._replace(prev_reward=reward, done=done)
 
         if self._num_episodes == 1 and self._first_episode_no_optimization:
-            reward = 0
+            reward = [0 for _ in range(len(state))]
         return state, reward, done, info

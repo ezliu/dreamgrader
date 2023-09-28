@@ -424,14 +424,14 @@ class RecurrentDQNPolicy(DQNPolicy):
             int: action
             hidden_state (None)
         """
-        q_values, hidden_state = self._Q([[state]], prev_hidden_state)
+        q_values, hidden_state = self._Q([[s] for s in state], prev_hidden_state)
         if test:
             epsilon = self._test_epsilon
         else:
             epsilon = self._epsilon_schedule.step()
         self._max_q.append(torch.max(q_values).item())
         self._min_q.append(torch.min(q_values).item())
-        return epsilon_greedy(q_values, epsilon)[0], hidden_state
+        return epsilon_greedy(q_values.squeeze(), epsilon), hidden_state
 
 
 class ClassifierDQNPolicy(RecurrentDQNPolicy):
@@ -453,7 +453,7 @@ class ClassifierDQNPolicy(RecurrentDQNPolicy):
         del prev_hidden_state
         # (batch_size, num_labels)
         #q_values, _ = self._Q([[state]], None)
-        decoder_logits = self._decoder([[state]], None)[0]
+        decoder_logits = self._decoder([[s] for s in state], None)[0]
         return (torch.argmax(decoder_logits, 1),
                 F.softmax(decoder_logits, 1).cpu().data.numpy())
         #return self._decoder([[state]], None)[0], None
